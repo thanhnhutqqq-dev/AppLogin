@@ -75,9 +75,56 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+function resolveSheetName(sheetName) {
+  if (typeof sheetName !== 'string') {
+    return SHEET_NAME;
+  }
+
+  const trimmed = sheetName.trim();
+  if (!trimmed) {
+    return SHEET_NAME;
+  }
+
+  if (/[!'\r\n\t]/.test(trimmed)) {
+    logger.warn('Invalid sheet name provided, falling back to default.', { sheetName });
+    return SHEET_NAME;
+  }
+
+  return trimmed;
+}
+
+function escapeSheetName(sheetName) {
+  return sheetName.replace(/'/g, "''");
+}
+
+app.get('/sheets', async (_req, res) => {
+  try {
+    const sheets = await getSheetsClient();
+    const response = await sheets.spreadsheets.get({
+      spreadsheetId: SHEET_ID,
+      fields: 'sheets(properties(title,sheetId))',
+    });
+
+    const sheetList =
+      response.data.sheets?.map(({ properties }) => ({
+        id: properties?.sheetId ?? null,
+        title: properties?.title ?? '',
+      })) ?? [];
+
+    res.json({
+      sheets: sheetList.filter((sheet) => sheet.title.length > 0),
+      defaultSheet: SHEET_NAME,
+    });
+  } catch (err) {
+    logger.error('Error fetching sheet metadata', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/sheet', async (req, res) => {
-  const { action, cell, value } = req.body || {};
-  logger.info('Received sheet request', { action, cell });
+  const { action, cell, value, sheetName } = req.body || {};
+  const targetSheetName = resolveSheetName(sheetName);
+  logger.info('Received sheet request', { action, cell, sheetName: targetSheetName });
 
   if (!action) {
     return res.status(400).json({ error: 'Missing action in request body.' });
@@ -87,13 +134,14 @@ app.post('/sheet', async (req, res) => {
     const sheets = await getSheetsClient();
 
     if (action === 'get-state') {
+      const escapedSheet = escapeSheetName(targetSheetName);
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: SHEET_ID,
-        range: SHEET_NAME,
+        range: `'${escapedSheet}'`,
       });
 
       const values = response.data.values || [];
-      return res.json({ values });
+      return res.json({ values, sheetName: targetSheetName });
     }
 
     if (action === 'update-cell') {
@@ -105,15 +153,16 @@ app.post('/sheet', async (req, res) => {
         values: [[value ?? '']],
       };
 
+      const escapedSheet = escapeSheetName(targetSheetName);
       await sheets.spreadsheets.values.update({
         spreadsheetId: SHEET_ID,
-        range: `${SHEET_NAME}!${cell}`,
+        range: `'${escapedSheet}'!${cell}`,
         valueInputOption: 'USER_ENTERED',
         requestBody,
       });
 
-      logger.info('Cell updated successfully', { cell });
-      return res.json({ success: true });
+      logger.info('Cell updated successfully', { cell, sheetName: targetSheetName });
+      return res.json({ success: true, sheetName: targetSheetName });
     }
 
     return res.status(400).json({ error: `Unsupported action "${action}".` });

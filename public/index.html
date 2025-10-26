@@ -87,6 +87,33 @@
         color: #b91c1c;
       }
 
+      .sheet-selector {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .sheet-selector label {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #1f2937;
+      }
+
+      .sheet-selector select {
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.55rem 0.75rem;
+        font-size: 1rem;
+        background-color: #fff;
+        color: #1f2937;
+      }
+
+      .sheet-selector select:disabled {
+        background-color: #f1f5f9;
+        color: #9ca3af;
+        cursor: not-allowed;
+      }
+
       button {
         cursor: pointer;
         border: none;
@@ -255,6 +282,12 @@
             >Running...</span
           >
         </header>
+        <div class="sheet-selector">
+          <label for="sheetSelector">Sheet</label>
+          <select id="sheetSelector" disabled>
+            <option>Loading...</option>
+          </select>
+        </div>
         <button id="runButton" class="primary">
           <span id="runButtonText">RUN LOGIN</span>
         </button>
@@ -308,11 +341,14 @@
         pollHandle: null,
         values: [],
         lastRunStatus: '',
+        sheetName: '',
+        sheets: [],
       };
 
       const runButton = document.getElementById('runButton');
       const runButtonText = document.getElementById('runButtonText');
       const stopPollingButton = document.getElementById('stopPollingButton');
+      const sheetSelector = document.getElementById('sheetSelector');
       const submitButton = document.getElementById('submitButton');
       const captchaInput = document.getElementById('captchaInput');
       const feedbackEl = document.getElementById('feedback');
@@ -358,9 +394,96 @@
         pollingBadge.classList.remove('hidden');
       }
 
+      function setSheetName(name) {
+        const normalized = typeof name === 'string' ? name : '';
+        state.sheetName = normalized;
+        if (sheetSelector) {
+          sheetSelector.value = normalized;
+        }
+        state.lastRunStatus = '';
+        runButton.disabled = state.running || !state.sheetName;
+        updateSubmitDisabled();
+      }
+
+      function renderSheetOptions(options, defaultSheet) {
+        if (!sheetSelector) {
+          return;
+        }
+
+        sheetSelector.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+
+        options.forEach((sheet) => {
+          const option = document.createElement('option');
+          option.value = sheet.title;
+          option.textContent = sheet.title;
+          if (sheet.id !== null && sheet.id !== undefined) {
+            option.dataset.sheetId = String(sheet.id);
+          }
+          fragment.appendChild(option);
+        });
+
+        sheetSelector.appendChild(fragment);
+
+        const titles = options.map((sheet) => sheet.title);
+        const preferred =
+          state.sheetName && titles.includes(state.sheetName)
+            ? state.sheetName
+            : defaultSheet && titles.includes(defaultSheet)
+            ? defaultSheet
+            : options[0]?.title ?? '';
+
+        setSheetName(preferred);
+        updateStatusBadge(state.polling ? 'POLLING...' : 'IDLE', state.polling ? 'blue' : 'gray');
+        sheetSelector.disabled = false;
+      }
+
+      async function fetchSheetList() {
+        if (!sheetSelector) {
+          return;
+        }
+
+        sheetSelector.disabled = true;
+        sheetSelector.innerHTML = '<option>Loading...</option>';
+
+        try {
+          const response = await fetch('/sheets');
+          if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.error || `Request failed (${response.status})`);
+          }
+
+          const data = await response.json();
+          const sheets = Array.isArray(data.sheets) ? data.sheets : [];
+          const defaultSheet = data.defaultSheet;
+
+          state.sheets = sheets;
+
+        if (!sheets.length) {
+          sheetSelector.innerHTML = '<option value=\"\">No sheets found</option>';
+          setSheetName('');
+          updateStatusBadge('IDLE', 'gray');
+          setFeedback('error', 'No sheets available in this spreadsheet.');
+          return;
+        }
+
+          renderSheetOptions(sheets, defaultSheet);
+        } catch (error) {
+          console.error('Failed to fetch sheet list:', error);
+          sheetSelector.innerHTML = '<option value=\"\">Load failed</option>';
+          setSheetName('');
+          updateStatusBadge('IDLE', 'gray');
+          state.sheets = [];
+          setFeedback('error', error.message || 'Failed to load sheet list.');
+          throw error;
+        } finally {
+          sheetSelector.disabled = state.sheets.length === 0;
+        }
+      }
+
       function toggleRunning(isRunning) {
         state.running = isRunning;
-        runButton.disabled = isRunning;
+        runButton.disabled = isRunning || !state.sheetName;
         runningBadge.classList.toggle('hidden', !isRunning);
         runButtonText.textContent = isRunning ? 'Sending...' : 'RUN LOGIN';
       }
@@ -563,6 +686,7 @@
         if (normalizedStatus === 'RUN') {
           setFeedback('info', 'POLLING...');
           updateStatusBadge('POLLING...', 'blue');
+          stopPollingButton.classList.remove('hidden');
           state.lastRunStatus = normalizedStatus;
           return;
         }
@@ -590,12 +714,17 @@
       }
 
       async function fetchSheetValues() {
+        if (!state.sheetName) {
+          setFeedback('info', 'Select a sheet to load data.');
+          return [];
+        }
+
         toggleLoading(true);
         try {
           const response = await fetch('/sheet', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'get-state' }),
+            body: JSON.stringify({ action: 'get-state', sheetName: state.sheetName }),
           });
           if (!response.ok) {
             const body = await response.json().catch(() => ({}));
@@ -616,6 +745,10 @@
 
       function startPolling() {
         if (state.polling) {
+          return;
+        }
+        if (!state.sheetName) {
+          setFeedback('error', 'Select a sheet before running.');
           return;
         }
         togglePolling(true);
@@ -642,10 +775,19 @@
       }
 
       async function updateCell(cell, value) {
+        if (!state.sheetName) {
+          throw new Error('Please select a sheet before updating.');
+        }
+
         const response = await fetch('/sheet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'update-cell', cell, value }),
+          body: JSON.stringify({
+            action: 'update-cell',
+            cell,
+            value,
+            sheetName: state.sheetName,
+          }),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -655,12 +797,17 @@
       }
 
       async function handleRunClick() {
+        if (!state.sheetName) {
+          setFeedback('error', 'Select a sheet before running.');
+          return;
+        }
+
         clearFeedback();
         toggleRunning(true);
-      try {
-        await updateCell('A2', 'RUN');
-        startPolling();
-      } catch (error) {
+        try {
+          await updateCell('A2', 'RUN');
+          startPolling();
+        } catch (error) {
           console.error('RUN LOGIN failed:', error);
           setFeedback('error', error.message || 'RUN LOGIN failed.');
           stopPolling();
@@ -672,13 +819,19 @@
       let submitting = false;
 
       function updateSubmitDisabled() {
-        submitButton.disabled = submitting || captchaInput.value.length !== 3;
+        submitButton.disabled =
+          submitting || !state.sheetName || captchaInput.value.length !== 3;
       }
 
       async function handleSubmitClick() {
         const trimmed = captchaInput.value.trim();
         if (trimmed.length !== 3) {
           setFeedback('error', 'Please enter exactly 3 digits before sending.');
+          return;
+        }
+
+        if (!state.sheetName) {
+          setFeedback('error', 'Select a sheet before sending captcha.');
           return;
         }
 
@@ -699,14 +852,49 @@
         }
       }
 
-      function handleStopPollingClick() {
+      async function handleStopPollingClick() {
         stopPolling();
-        setFeedback('info', 'Polling stopped. Click RUN LOGIN to resume.');
+        toggleRunning(false);
+
+        if (!state.sheetName) {
+          setFeedback('error', 'Select a sheet before stopping.');
+          return;
+        }
+
+        try {
+          if (state.lastRunStatus === 'RUN') {
+            await updateCell('A2', 'DONE');
+            state.lastRunStatus = 'DONE';
+            setFeedback('success', 'Status set to DONE.');
+            await fetchSheetValues();
+          } else {
+            setFeedback('info', 'Polling stopped. Click RUN LOGIN to resume.');
+          }
+        } catch (error) {
+          console.error('Stop polling update failed:', error);
+          setFeedback('error', error.message || 'Failed to stop run.');
+        }
       }
 
       runButton.addEventListener('click', handleRunClick);
       submitButton.addEventListener('click', handleSubmitClick);
       stopPollingButton.addEventListener('click', handleStopPollingClick);
+      if (sheetSelector) {
+        sheetSelector.addEventListener('change', (event) => {
+          const value = event.target.value;
+          setSheetName(value);
+          stopPolling();
+          toggleRunning(false);
+          if (!value) {
+            clearFeedback();
+            return;
+          }
+          fetchSheetValues().catch((error) => {
+            console.error('Sheet change fetch failed:', error);
+            setFeedback('error', error.message || 'Failed to load sheet.');
+          });
+        });
+      }
       if (refreshButton) {
         refreshButton.addEventListener('click', () => {
           fetchSheetValues().catch((error) => {
@@ -735,11 +923,22 @@
       });
 
       // Initial load
-      updateSubmitDisabled();
-      fetchSheetValues().catch((error) => {
-        console.error('Initial fetch failed:', error);
-        setFeedback('error', error.message);
-      });
+      async function initializeDashboard() {
+        updateSubmitDisabled();
+        try {
+          await fetchSheetList();
+          if (state.sheetName) {
+            await fetchSheetValues();
+          }
+        } catch (error) {
+          console.error('Initialization failed:', error);
+          if (!state.sheetName) {
+            setFeedback('error', error.message || 'Initialization failed.');
+          }
+        }
+      }
+
+      initializeDashboard();
     </script>
   </body>
 </html>
