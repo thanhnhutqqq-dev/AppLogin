@@ -330,18 +330,20 @@
 
     .captcha-area {
       display: flex;
-      gap: clamp(0.5rem, 2vw, 0.75rem);
       align-items: center;
+      justify-content: center;
+      gap: clamp(0.45rem, 2vw, 0.7rem);
       width: 100%;
+      flex-wrap: nowrap;
     }
 
     .captcha-area input {
       flex: 1 1 auto;
-      min-width: 0;
-      padding: clamp(0.55rem, 2vw, 0.75rem);
-      font-size: clamp(1rem, 3.5vw, 1.25rem);
+      min-width: 140px;
+      padding: clamp(0.5rem, 1.8vw, 0.7rem);
+      font-size: clamp(1rem, 3.2vw, 1.2rem);
       text-align: center;
-      letter-spacing: clamp(0.24rem, 2vw, 0.35rem);
+      letter-spacing: clamp(0.18rem, 1.6vw, 0.3rem);
       border-radius: 4px;
       border: 1px solid #1f2937;
       background: #010b1a;
@@ -361,9 +363,9 @@
     }
 
     .captcha-area button {
-      flex: 0 0 auto;
-      padding: clamp(0.55rem, 2vw, 0.75rem) clamp(0.85rem, 4vw, 1rem);
-      min-width: 108px;
+      flex: 0 0 clamp(92px, 22vw, 130px);
+      padding: clamp(0.5rem, 2vw, 0.7rem) clamp(0.75rem, 3vw, 0.95rem);
+      white-space: nowrap;
     }
 
     .image-box {
@@ -371,6 +373,7 @@
       background: #0b1120;
       border-radius: 4px;
       padding: clamp(0.75rem, 2vw, 1rem);
+      min-height: 50px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -491,13 +494,8 @@
         grid-template-columns: 1fr;
       }
 
-      .captcha-area {
-        flex-wrap: wrap;
-      }
-
       .captcha-area button {
-        width: 100%;
-        min-width: 0;
+        flex-basis: clamp(88px, 28vw, 120px);
       }
     }
 
@@ -580,20 +578,21 @@
 
     <section class="panel">
       <h2>Captcha Image</h2>
+      <div class="sheet-selector">
+        <label for="sheetSelector">Image</label>
+      </div>
       <div class="image-box empty" id="captchaContainer">
         <span>No image available.</span>
       </div>
-    </section>
-
-    <section class="panel">
-      <h2>Enter Captcha</h2>
+      <div class="sheet-selector">
+        <label for="sheetSelector">Enter</label>
+      </div>
       <div class="captcha-area">
         <input id="captchaInput" type="text" placeholder="000" inputmode="numeric" maxlength="3"
           aria-label="Captcha answer (3 digits)" />
         <button id="submitButton" class="secondary">Send</button>
       </div>
     </section>
-
   </main>
 
   <script>
@@ -629,39 +628,84 @@
     const statusPanel = document.getElementById('statusPanel');
     const loadingBadge = document.getElementById('loadingBadge');
     const rootElement = document.documentElement;
+    let baseViewportHeight =
+      Math.max(window.innerHeight || 0, window.visualViewport ? window.visualViewport.height : 0) || 0;
+    let keyboardActive = false;
 
     const FEEDBACK_TYPES = ['success', 'error', 'info'];
     const STATUS_BADGE_VARIANTS = ['gray', 'green', 'blue', 'red', 'amber'];
 
-    function updateViewportHeight() {
+    function updateViewportHeight(options = {}) {
+      const { force = false } = options;
       const viewport = window.visualViewport;
       const height = viewport ? viewport.height : window.innerHeight;
-      if (height) {
-        rootElement.style.setProperty('--app-vh', `${height}px`);
+      if (!height) {
+        return;
       }
+
+      if (!baseViewportHeight) {
+        baseViewportHeight = height;
+      }
+
+      if (!force) {
+        if (keyboardActive) {
+          return;
+        }
+        if (baseViewportHeight && height < baseViewportHeight - 80) {
+          return;
+        }
+      }
+
+      if (!keyboardActive || force) {
+        baseViewportHeight = Math.max(baseViewportHeight, height);
+      }
+
+      const targetHeight = force ? baseViewportHeight : Math.max(height, baseViewportHeight);
+      rootElement.style.setProperty('--app-vh', `${targetHeight}px`);
     }
 
-    updateViewportHeight();
+    updateViewportHeight({ force: true });
 
     const detachViewportListeners = (() => {
-      const handler = () => updateViewportHeight();
+      const viewportHandler = () => updateViewportHeight();
+      const orientationHandler = () => updateViewportHeight({ force: true });
       if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', handler);
-        window.visualViewport.addEventListener('scroll', handler);
+        window.visualViewport.addEventListener('resize', viewportHandler);
+        window.visualViewport.addEventListener('scroll', viewportHandler);
       } else {
-        window.addEventListener('resize', handler);
+        window.addEventListener('resize', viewportHandler);
       }
-      window.addEventListener('orientationchange', handler);
+      window.addEventListener('orientationchange', orientationHandler);
       return () => {
         if (window.visualViewport) {
-          window.visualViewport.removeEventListener('resize', handler);
-          window.visualViewport.removeEventListener('scroll', handler);
+          window.visualViewport.removeEventListener('resize', viewportHandler);
+          window.visualViewport.removeEventListener('scroll', viewportHandler);
         } else {
-          window.removeEventListener('resize', handler);
+          window.removeEventListener('resize', viewportHandler);
         }
-        window.removeEventListener('orientationchange', handler);
+        window.removeEventListener('orientationchange', orientationHandler);
       };
     })();
+
+    document.addEventListener('focusin', (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.matches('input, textarea, select, [contenteditable="true"]')) {
+        keyboardActive = true;
+        rootElement.classList.add('keyboard-active');
+      }
+    });
+
+    document.addEventListener('focusout', (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.matches('input, textarea, select, [contenteditable="true"]')) {
+        keyboardActive = false;
+        rootElement.classList.remove('keyboard-active');
+        setTimeout(() => {
+          window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+          updateViewportHeight({ force: true });
+        }, 120);
+      }
+    });
 
     function resolveStatusVariant(status) {
       switch (status) {
@@ -1351,36 +1395,11 @@
         }
       }
     }
-    (function () {
-      // Hàm cập nhật chiều cao thật của viewport
-      function updateViewportHeight() {
-        const app = document.getElementById('app');
-        if (app) {
-          app.style.minHeight = window.innerHeight + 'px';
-        }
-      }
-
-      // Cập nhật khi resize (mở/đóng bàn phím)
-      window.addEventListener('resize', updateViewportHeight);
-      window.addEventListener('orientationchange', updateViewportHeight);
-      window.addEventListener('load', updateViewportHeight);
-
-      // Fix layout sau khi bàn phím đóng
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
-          if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
-          setTimeout(() => {
-            window.scrollTo(0, 0);
-            updateViewportHeight();
-          }, 300);
-        });
-      }
-
-      updateViewportHeight();
-    })();
 
     initializeDashboard();
   </script>
 </body>
 
 </html>
+
+
