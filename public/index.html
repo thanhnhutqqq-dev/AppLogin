@@ -14,6 +14,7 @@
       --glass-border: rgba(255, 255, 255, 0.55);
       --glass-shadow: 0 24px 54px -32px rgba(15, 23, 42, 0.7);
       --transition-slow: 0.4s ease;
+      --app-vh: 100vh;
     }
 
     * {
@@ -25,9 +26,16 @@
       box-sizing: inherit;
     }
 
+    html {
+      min-height: 100%;
+      background: radial-gradient(circle at 0% 0%, rgba(255, 255, 255, 0.92) 0%, rgba(239, 246, 255, 0.95) 45%, rgba(224, 247, 255, 0.9) 100%);
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
+      min-height: 100dvh;
+      min-height: var(--app-vh);
       display: flex;
       justify-content: center;
       align-items: flex-start;
@@ -734,9 +742,40 @@
     const pollingBadge = document.getElementById('pollingBadge');
     const statusPanel = document.getElementById('statusPanel');
     const loadingBadge = document.getElementById('loadingBadge');
+    const rootElement = document.documentElement;
 
     const FEEDBACK_TYPES = ['success', 'error', 'info'];
     const STATUS_BADGE_VARIANTS = ['gray', 'green', 'blue', 'red', 'amber'];
+
+    function updateViewportHeight() {
+      const viewport = window.visualViewport;
+      const height = viewport ? viewport.height : window.innerHeight;
+      if (height) {
+        rootElement.style.setProperty('--app-vh', `${height}px`);
+      }
+    }
+
+    updateViewportHeight();
+
+    const detachViewportListeners = (() => {
+      const handler = () => updateViewportHeight();
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handler);
+        window.visualViewport.addEventListener('scroll', handler);
+      } else {
+        window.addEventListener('resize', handler);
+      }
+      window.addEventListener('orientationchange', handler);
+      return () => {
+        if (window.visualViewport) {
+          window.visualViewport.removeEventListener('resize', handler);
+          window.visualViewport.removeEventListener('scroll', handler);
+        } else {
+          window.removeEventListener('resize', handler);
+        }
+        window.removeEventListener('orientationchange', handler);
+      };
+    })();
 
     function resolveStatusVariant(status) {
       switch (status) {
@@ -1404,6 +1443,9 @@
 
     window.addEventListener('beforeunload', () => {
       stopPolling();
+      if (typeof detachViewportListeners === 'function') {
+        detachViewportListeners();
+      }
     });
 
     // Initial load
