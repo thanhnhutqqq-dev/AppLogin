@@ -6,6 +6,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Auto Login Dashboard</title>
   <style>
+    html,
+    body {
+      height: 100%;
+      min-height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.85), rgba(59, 130, 246, 0.85), #ffffff);
+      background-attachment: fixed;
+      background-size: cover;
+      background-repeat: no-repeat;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body.fixed {
+      position: fixed;
+      width: 100%;
+    }
+
+    #app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
     :root {
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       color: #0f172a;
@@ -291,7 +317,7 @@
       z-index: 0;
     }
 
-    button > * {
+    button>* {
       position: relative;
       z-index: 1;
     }
@@ -636,6 +662,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
+
       *,
       *::before,
       *::after {
@@ -1465,6 +1492,33 @@
         }
       }
     }
+    (function () {
+      // Hàm cập nhật chiều cao thật của viewport
+      function updateViewportHeight() {
+        const app = document.getElementById('app');
+        if (app) {
+          app.style.minHeight = window.innerHeight + 'px';
+        }
+      }
+
+      // Cập nhật khi resize (mở/đóng bàn phím)
+      window.addEventListener('resize', updateViewportHeight);
+      window.addEventListener('orientationchange', updateViewportHeight);
+      window.addEventListener('load', updateViewportHeight);
+
+      // Fix layout sau khi bàn phím đóng
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+          if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+          setTimeout(() => {
+            window.scrollTo(0, 0);
+            updateViewportHeight();
+          }, 300);
+        });
+      }
+
+      updateViewportHeight();
+    })();
 
     initializeDashboard();
   </script>
