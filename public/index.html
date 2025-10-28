@@ -8,194 +8,412 @@
   <style>
     :root {
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      color: #1f2933;
-      background-color: #f5f7fa;
+      color: #0f172a;
+      background-color: #eef2ff;
+      --glass-bg: rgba(255, 255, 255, 0.3);
+      --glass-border: rgba(255, 255, 255, 0.55);
+      --glass-shadow: 0 24px 54px -32px rgba(15, 23, 42, 0.7);
+      --transition-slow: 0.4s ease;
     }
 
     * {
       box-sizing: border-box;
     }
 
+    *::before,
+    *::after {
+      box-sizing: inherit;
+    }
+
     body {
       margin: 0;
+      min-height: 100vh;
       display: flex;
       justify-content: center;
-      padding: 2.5rem 1.5rem;
+      align-items: flex-start;
+      padding: clamp(1.5rem, 4vw, 3.5rem);
+      background: radial-gradient(circle at 0% 0%, rgba(255, 255, 255, 0.92) 0%, rgba(239, 246, 255, 0.95) 45%, rgba(224, 247, 255, 0.9) 100%);
+      color: inherit;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: '';
+      position: fixed;
+      z-index: -1;
+      width: max(35vw, 320px);
+      height: max(35vw, 320px);
+      filter: blur(120px);
+      opacity: 0.65;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+
+    body::before {
+      top: 12%;
+      left: 18%;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.4), transparent 70%);
+    }
+
+    body::after {
+      bottom: -10%;
+      right: -5%;
+      background: radial-gradient(circle, rgba(14, 165, 233, 0.35), transparent 65%);
     }
 
     main {
-      width: min(960px, 100%);
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
+      width: min(1150px, 100%);
+      display: grid;
+      gap: clamp(1.1rem, 3vw, 2rem);
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      align-content: start;
+    }
+
+    main>.panel:first-of-type,
+    main>.panel:last-of-type {
+      grid-column: 1 / -1;
     }
 
     h1 {
       margin: 0;
-      font-size: 2rem;
-      font-weight: 600;
+      font-size: clamp(2.1rem, 4vw, 2.8rem);
+      font-weight: 700;
+      letter-spacing: -0.01em;
     }
 
     h2 {
       margin: 0;
-      font-size: 1.25rem;
-      font-weight: 600;
+      font-size: clamp(1.25rem, 3vw, 1.6rem);
+      font-weight: 700;
+      letter-spacing: 0.01em;
     }
 
     .panel {
-      background-color: #fff;
-      border: 1px solid #d2d6dc;
-      border-radius: 10px;
-      padding: 1.5rem;
-      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+      position: relative;
+      padding: clamp(1.5rem, 3.5vw, 2.2rem);
+      border-radius: 26px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.16));
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(25px) saturate(160%);
+      -webkit-backdrop-filter: blur(25px) saturate(160%);
+      box-shadow: var(--glass-shadow);
       display: flex;
       flex-direction: column;
-      gap: 1rem;
+      gap: 1.1rem;
+      overflow: hidden;
+      transition: transform var(--transition-slow), box-shadow var(--transition-slow), border-color var(--transition-slow);
+    }
+
+    .panel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(150deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.05) 65%);
+      opacity: 0.75;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .panel>* {
+      position: relative;
+      z-index: 1;
+    }
+
+    .panel:focus-within {
+      box-shadow: 0 28px 56px -28px rgba(15, 23, 42, 0.65);
+      border-color: rgba(255, 255, 255, 0.72);
     }
 
     .panel header {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 0.75rem;
+    }
+
+    .panel-status {
+      transition: background 0.45s ease, border-color 0.45s ease, box-shadow 0.45s ease;
+    }
+
+    .panel-status.status-gray {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.16));
+      border-color: rgba(255, 255, 255, 0.55);
+      box-shadow: var(--glass-shadow);
+    }
+
+    .panel-status.status-blue {
+      background: linear-gradient(140deg, rgba(96, 165, 250, 0.32), rgba(14, 165, 233, 0.18));
+      border-color: rgba(59, 130, 246, 0.45);
+      box-shadow: 0 36px 72px -30px rgba(37, 99, 235, 0.58);
+    }
+
+    .panel-status.status-green {
+      background: linear-gradient(140deg, rgba(134, 239, 172, 0.4), rgba(16, 185, 129, 0.2));
+      border-color: rgba(34, 197, 94, 0.45);
+      box-shadow: 0 36px 72px -30px rgba(16, 185, 129, 0.5);
+    }
+
+    .panel-status.status-red {
+      background: linear-gradient(140deg, rgba(252, 165, 165, 0.4), rgba(248, 113, 113, 0.2));
+      border-color: rgba(239, 68, 68, 0.45);
+      box-shadow: 0 36px 72px -30px rgba(239, 68, 68, 0.5);
+    }
+
+    .panel-status.status-amber {
+      background: linear-gradient(140deg, rgba(253, 230, 138, 0.45), rgba(249, 115, 22, 0.22));
+      border-color: rgba(249, 115, 22, 0.45);
+      box-shadow: 0 36px 72px -30px rgba(249, 115, 22, 0.48);
     }
 
     .status-badge {
-      padding: 0.25rem 0.6rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.35rem 0.9rem;
       border-radius: 999px;
-      font-size: 0.7rem;
-      font-weight: 600;
+      font-size: 0.72rem;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.12em;
+      color: #ffffff;
+      background-image: linear-gradient(135deg, rgba(148, 163, 184, 0.8), rgba(71, 85, 105, 0.9));
+      box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.85);
+      animation: badgePulse 3s ease-in-out infinite;
     }
 
     .status-badge.blue {
-      background-color: #dbeafe;
-      color: #1d4ed8;
+      background-image: linear-gradient(135deg, #60a5fa, #2563eb);
+      box-shadow: 0 12px 30px -15px rgba(37, 99, 235, 0.6);
     }
 
     .status-badge.green {
-      background-color: #dcfce7;
-      color: #15803d;
+      background-image: linear-gradient(135deg, #34d399, #059669);
+      box-shadow: 0 12px 30px -15px rgba(5, 150, 105, 0.55);
     }
 
     .status-badge.gray {
-      background-color: #e5e7eb;
-      color: #4b5563;
+      background-image: linear-gradient(135deg, #e2e8f0, #cbd5f5);
+      color: #1f2937;
+      box-shadow: 0 12px 30px -15px rgba(15, 23, 42, 0.4);
     }
 
     .status-badge.red {
-      background-color: #fee2e2;
-      color: #b91c1c;
+      background-image: linear-gradient(135deg, #fda4af, #ef4444);
+      box-shadow: 0 12px 30px -15px rgba(239, 68, 68, 0.55);
+    }
+
+    .status-badge.amber {
+      background-image: linear-gradient(135deg, #fcd34d, #f97316);
+      box-shadow: 0 12px 30px -15px rgba(249, 115, 22, 0.45);
     }
 
     .sheet-selector {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: 0.75rem;
     }
 
     .sheet-selector label {
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       font-weight: 600;
-      color: #1f2937;
+      letter-spacing: 0.02em;
     }
 
     .sheet-selector select {
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      padding: 0.55rem 0.75rem;
+      border-radius: 20px;
+      padding: 0.7rem 1rem;
       font-size: 1rem;
-      background-color: #fff;
-      color: #1f2937;
+      color: #0f172a;
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 12px 30px -20px rgba(99, 102, 241, 0.45);
+      transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+      appearance: none;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .sheet-selector select:hover:not(:disabled) {
+      border-color: rgba(99, 102, 241, 0.6);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 18px 36px -22px rgba(99, 102, 241, 0.45);
+    }
+
+    .sheet-selector select:focus-visible {
+      outline: none;
+      border-color: rgba(99, 102, 241, 0.9);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.25);
     }
 
     .sheet-selector select:disabled {
-      background-color: #f1f5f9;
-      color: #9ca3af;
+      background: rgba(226, 232, 240, 0.65);
+      color: rgba(71, 85, 105, 0.8);
+      opacity: 0.8;
       cursor: not-allowed;
+      box-shadow: none;
     }
 
     button {
       cursor: pointer;
       border: none;
-      border-radius: 8px;
-      padding: 0.8rem 1rem;
+      border-radius: 20px;
+      padding: 0.85rem 1.4rem;
       font-size: 1rem;
       font-weight: 600;
-      transition: background-color 0.2s ease, transform 0.15s ease;
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      transition: transform 0.35s ease, box-shadow 0.35s ease, filter 0.35s ease;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(148, 163, 184, 0.5));
+      color: #0f172a;
+      box-shadow: 0 18px 36px -22px rgba(15, 23, 42, 0.55);
     }
 
-    button.primary {
-      background-color: #2563eb;
-      color: #fff;
+    button::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(circle at center, rgba(255, 255, 255, 0.45), transparent 65%);
+      opacity: 0;
+      transform: scale(0);
+      transition: transform 0.6s ease, opacity 0.6s ease;
+      pointer-events: none;
+      z-index: 0;
     }
 
-    button.primary:hover:not(:disabled) {
-      background-color: #1e4ed8;
+    button > * {
+      position: relative;
+      z-index: 1;
     }
 
-    button.primary:active:not(:disabled) {
-      transform: translateY(1px);
+    button:hover:not(:disabled) {
+      transform: translateY(-4px);
+      box-shadow: 0 24px 48px -26px rgba(37, 99, 235, 0.6);
+      filter: brightness(1.02);
     }
 
-    button.secondary {
-      background-color: #e5edff;
-      color: #1f3a8a;
-      border: 1px solid #c3d4ff;
+    button:active:not(:disabled) {
+      transform: translateY(-1px) scale(0.98);
     }
 
-    button.secondary:hover:not(:disabled) {
-      background-color: #d0dcff;
+    button:active::after {
+      opacity: 0.8;
+      transform: scale(3.2);
+      transition-duration: 0.35s;
+    }
+
+    button:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.35), 0 20px 40px -25px rgba(37, 99, 235, 0.55);
     }
 
     button:disabled {
-      background-color: #93c5fd;
       cursor: not-allowed;
+      opacity: 0.55;
       transform: none;
+      box-shadow: none;
+    }
+
+    button:disabled::after {
+      opacity: 0;
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, #6366f1, #0ea5e9);
+      color: #ffffff;
+      box-shadow: 0 22px 48px -25px rgba(14, 165, 233, 0.55);
+    }
+
+    button.primary:hover:not(:disabled) {
+      box-shadow: 0 28px 56px -25px rgba(14, 165, 233, 0.6);
+    }
+
+    button.secondary {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(226, 232, 255, 0.75));
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      color: #0f172a;
+      box-shadow: 0 18px 36px -26px rgba(148, 163, 184, 0.55);
+    }
+
+    button.secondary:hover:not(:disabled) {
+      box-shadow: 0 20px 42px -24px rgba(148, 163, 184, 0.55);
+      filter: brightness(1.05);
+    }
+
+    button.is-locked {
+      filter: saturate(0.75);
+    }
+
+    button.is-locked::after {
+      opacity: 0;
     }
 
     .feedback-popup {
       position: fixed;
       inset: 0;
-      background-color: rgba(15, 23, 42, 0.45);
-      display: none;
+      z-index: 1000;
+      display: flex;
       align-items: center;
       justify-content: center;
-      padding: 1.5rem;
-      z-index: 1000;
+      padding: clamp(1.25rem, 5vw, 3rem);
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
     }
 
     .feedback-popup.visible {
-      display: flex;
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
     }
 
     .feedback-popup__content {
-      width: min(360px, 100%);
-      background-color: #ffffff;
-      border-radius: 14px;
-      padding: 1.5rem;
+      width: min(400px, 100%);
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.2));
+      border-radius: 26px;
+      padding: clamp(1.2rem, 3vw, 1.8rem);
       display: flex;
       flex-direction: column;
       gap: 1rem;
-      box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
-      border: 1px solid #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 28px 60px -24px rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      transform: translateY(24px);
+      opacity: 0;
+      transition: transform 0.45s ease, opacity 0.45s ease;
+    }
+
+    .feedback-popup.visible .feedback-popup__content {
+      transform: translateY(0);
+      opacity: 1;
     }
 
     .feedback-popup.is-success .feedback-popup__content {
-      border-left: 4px solid #16a34a;
+      border-color: rgba(34, 197, 94, 0.55);
+      box-shadow: 0 28px 60px -24px rgba(16, 185, 129, 0.45);
     }
 
     .feedback-popup.is-error .feedback-popup__content {
-      border-left: 4px solid #dc2626;
+      border-color: rgba(239, 68, 68, 0.55);
+      box-shadow: 0 28px 60px -24px rgba(239, 68, 68, 0.4);
     }
 
     .feedback-popup.is-info .feedback-popup__content {
-      border-left: 4px solid #2563eb;
+      border-color: rgba(59, 130, 246, 0.55);
+      box-shadow: 0 28px 60px -24px rgba(59, 130, 246, 0.4);
     }
 
     .feedback-popup__message {
       font-size: 1rem;
-      color: #1f2937;
+      line-height: 1.5;
+      color: #0f172a;
     }
 
     .feedback-popup__actions {
@@ -204,96 +422,211 @@
     }
 
     .feedback-popup__close {
-      background-color: #1f3a8a;
+      background: linear-gradient(135deg, #6366f1, #0ea5e9);
       color: #fff;
       border: none;
-      border-radius: 8px;
+      border-radius: 20px;
       font-weight: 600;
-      padding: 0.55rem 1.1rem;
+      padding: 0.6rem 1.4rem;
       cursor: pointer;
+      box-shadow: 0 16px 30px -20px rgba(14, 165, 233, 0.6);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
 
     .feedback-popup__close:hover {
-      background-color: #1e40af;
+      transform: translateY(-3px);
+      box-shadow: 0 22px 40px -22px rgba(14, 165, 233, 0.55);
+    }
+
+    .feedback-popup__close:active {
+      transform: translateY(-1px);
     }
 
     .captcha-area {
       display: flex;
-      gap: 0.75rem;
+      gap: 1rem;
       flex-wrap: wrap;
+      align-items: center;
     }
 
     .captcha-area input {
       flex: 1;
-      min-width: 140px;
-      padding: 0.75rem;
-      font-size: 1.25rem;
-      font-weight: 600;
+      min-width: 180px;
+      padding: 1rem;
+      font-size: 1.5rem;
+      font-weight: 700;
       text-align: center;
-      border-radius: 8px;
-      border: 1px solid #cbd5e1;
-      letter-spacing: 0.4rem;
+      border-radius: 24px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      letter-spacing: 0.6rem;
+      background: rgba(255, 255, 255, 0.7);
+      box-shadow: inset 0 2px 6px rgba(15, 23, 42, 0.08), 0 16px 32px -24px rgba(37, 99, 235, 0.45);
+      transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+      caret-color: #6366f1;
+    }
+
+    .captcha-area input::placeholder {
+      color: rgba(148, 163, 184, 0.6);
     }
 
     .captcha-area input:focus {
       outline: none;
-      border-color: #2563eb;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+      border-color: rgba(37, 99, 235, 0.65);
+      box-shadow: 0 0 0 5px rgba(99, 102, 241, 0.25);
+      background: rgba(255, 255, 255, 0.92);
     }
 
     .image-box {
-      border: 1px dashed #cbd5e1;
-      background-color: #f8fafc;
-      border-radius: 8px;
-      padding: 0.5rem;
-      display: inline-flex;
+      border: 1px dashed rgba(148, 163, 184, 0.4);
+      background: rgba(255, 255, 255, 0.32);
+      border-radius: 24px;
+      padding: clamp(0.9rem, 2.5vw, 1.4rem);
+      display: flex;
       align-items: center;
       justify-content: center;
       max-width: 100%;
       align-self: center;
+      text-align: center;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 20px 40px -30px rgba(15, 23, 42, 0.6);
+      transition: border-color 0.3s ease, box-shadow 0.3s ease, padding 0.3s ease, background 0.3s ease;
+    }
+
+    .image-box.has-image {
+      display: inline-flex;
+      min-height: 0;
+      padding: 0;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(255, 255, 255, 0.58);
+      box-shadow: 0 24px 48px -32px rgba(37, 99, 235, 0.35);
+    }
+
+    .image-box.empty span {
+      color: rgba(100, 116, 139, 0.85);
+    }
+
+    .image-box:hover {
+      border-color: rgba(99, 102, 241, 0.5);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 24px 44px -32px rgba(59, 130, 246, 0.45);
+    }
+
+    .image-box.has-image:hover {
+      box-shadow: 0 28px 52px -30px rgba(14, 165, 233, 0.45);
     }
 
     .image-box img {
       display: block;
-      max-width: 100%;
-      height: auto;
       object-fit: contain;
+      width: auto;
+      height: auto;
+      max-width: min(100%, 460px);
     }
 
     .latest-log {
       margin-top: 0.75rem;
-      padding: 0.85rem 1rem;
-      border-radius: 8px;
-      background-color: #f8fafc;
-      border: 1px solid #e2e8f0;
-      font-size: 0.95rem;
-      color: #1f2937;
+      padding: 1.2rem 1.4rem;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.45);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      font-size: 1rem;
+      color: #0f172a;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      min-height: 90px;
+      line-height: 1.55;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
     }
 
     .sheet-preview table {
       width: 100%;
       border-collapse: collapse;
-      border-radius: 8px;
+      border-radius: 22px;
       overflow: hidden;
-      background-color: #fff;
-      border: 1px solid #d2d6dc;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
     }
 
     .sheet-preview th,
     .sheet-preview td {
-      border: 1px solid #e2e8f0;
-      padding: 0.6rem;
-      font-size: 0.9rem;
+      border: 1px solid rgba(226, 232, 240, 0.65);
+      padding: 0.75rem;
+      font-size: 0.95rem;
       text-align: left;
+      color: #0f172a;
     }
 
     .sheet-preview th {
-      background-color: #f1f5f9;
-      font-weight: 600;
+      background: linear-gradient(135deg, rgba(226, 232, 240, 0.9), rgba(214, 226, 255, 0.7));
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .sheet-preview tr:hover td {
+      background: rgba(226, 232, 240, 0.4);
     }
 
     .hidden {
       display: none !important;
+    }
+
+    @keyframes badgePulse {
+      0% {
+        transform: translateY(0);
+        box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.6);
+      }
+
+      50% {
+        transform: translateY(-1px);
+        box-shadow: 0 14px 34px -18px rgba(59, 130, 246, 0.45);
+      }
+
+      100% {
+        transform: translateY(0);
+        box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.6);
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: clamp(1rem, 6vw, 2.5rem);
+      }
+
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      .captcha-area {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .captcha-area input {
+        letter-spacing: 0.5rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .panel {
+        padding: 1.25rem;
+      }
+
+      .captcha-area input {
+        font-size: 1.3rem;
+        letter-spacing: 0.35rem;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
   </style>
 </head>
@@ -310,11 +643,14 @@
     </div>
   </div>
   <main>
-    <section class="panel">
+    <section id="statusPanel" class="panel panel-status status-gray">
       <header>
         <h1>Auto Login</h1>
         <span id="pollingBadge" class="status-badge gray hidden">Idle</span>
       </header>
+    </section>
+
+    <section class="panel">
       <div id="latestLog" class="latest-log">
         No log entries yet.
       </div>
@@ -341,8 +677,8 @@
 
     <section class="panel">
       <h2>Captcha Image</h2>
-      <div class="image-box" id="captchaContainer">
-        <span style="color: #6b7280;">No image available.</span>
+      <div class="image-box empty" id="captchaContainer">
+        <span>No image available.</span>
       </div>
     </section>
 
@@ -387,29 +723,67 @@
     const refreshButton = document.getElementById('refreshButton');
     const runningBadge = document.getElementById('runningBadge');
     const pollingBadge = document.getElementById('pollingBadge');
+    const statusPanel = document.getElementById('statusPanel');
     const loadingBadge = document.getElementById('loadingBadge');
 
     const FEEDBACK_TYPES = ['success', 'error', 'info'];
-    const STATUS_BADGE_VARIANTS = ['gray', 'green', 'blue', 'red'];
+    const STATUS_BADGE_VARIANTS = ['gray', 'green', 'blue', 'red', 'amber'];
 
-    function setFeedback(type, message, options = {}) {
-      const { popup = false } = options;
+    function resolveStatusVariant(status) {
+      switch (status) {
+        case 'RUN':
+          return 'blue';
+        case 'DONE':
+          return 'green';
+        case 'ERROR':
+          return 'red';
+        case 'PENDING':
+          return 'amber';
+        default:
+          return 'gray';
+      }
+    }
 
-      if (!message || typeof message !== 'string' || !message.trim()) {
-        clearFeedback();
+    function refreshRunButtonState() {
+      if (!runButton) {
         return;
       }
+      const normalized = normalizeStatus(state.lastRunStatus);
+      const isPending = normalized === 'PENDING';
+      const isRunningStatus = normalized === 'RUN';
+      const shouldDisable =
+        state.running || !state.sheetName || isPending || isRunningStatus;
+      runButton.disabled = shouldDisable;
+      runButton.classList.toggle('is-locked', isPending || isRunningStatus);
 
-      if (popup && feedbackPopup && feedbackMessageEl) {
-        const variant = FEEDBACK_TYPES.includes(type) ? type : 'info';
-        FEEDBACK_TYPES.forEach((t) =>
-          feedbackPopup.classList.remove(`is-${t}`)
-        );
-        feedbackPopup.classList.add(`is-${variant}`);
+      if (isPending) {
+        runButton.title = 'Status is PENDING. Please wait until it changes.';
+      } else if (isRunningStatus) {
+        runButton.title = 'Status is RUN. Please wait for completion.';
+      } else if (state.running) {
+        runButton.title = 'Request already in progress.';
+      } else if (!state.sheetName) {
+        runButton.title = 'Select a sheet to start.';
+      } else {
+        runButton.removeAttribute('title');
+      }
+    }
 
-        feedbackMessageEl.textContent = message;
-        feedbackPopup.classList.remove('hidden');
-        feedbackPopup.classList.add('visible');
+    function updateActionButtons() {
+      if (!runButton || !stopPollingButton) {
+        return;
+      }
+      const showStop =
+        state.running ||
+        state.polling ||
+        normalizeStatus(state.lastRunStatus) === 'RUN';
+      runButton.classList.toggle('hidden', showStop);
+      stopPollingButton.classList.toggle('hidden', !showStop);
+    }
+
+    function setFeedback(type, message) {
+      if (!message || typeof message !== 'string' || !message.trim()) {
+        clearFeedback();
         return;
       }
 
@@ -432,12 +806,32 @@
       feedbackMessageEl.textContent = '';
     }
 
+    function setStatusPanelVariant(variant) {
+      if (!statusPanel) {
+        return;
+      }
+      const applied = STATUS_BADGE_VARIANTS.includes(variant)
+        ? variant
+        : 'gray';
+      STATUS_BADGE_VARIANTS.forEach((color) => {
+        statusPanel.classList.toggle(`status-${color}`, color === applied);
+      });
+    }
+
     function updateStatusBadge(label, variant = 'gray') {
-      pollingBadge.textContent = label;
+      if (!pollingBadge) {
+        return;
+      }
+      const safeLabel =
+        typeof label === 'string' && label.trim()
+          ? label.trim()
+          : 'IDLE';
+      pollingBadge.textContent = safeLabel;
       STATUS_BADGE_VARIANTS.forEach((color) => {
         pollingBadge.classList.toggle(color, color === variant);
       });
       pollingBadge.classList.remove('hidden');
+      setStatusPanelVariant(variant);
     }
 
     function setSheetName(name) {
@@ -447,7 +841,8 @@
         sheetSelector.value = normalized;
       }
       state.lastRunStatus = '';
-      runButton.disabled = state.running || !state.sheetName;
+      refreshRunButtonState();
+      updateActionButtons();
       updateSubmitDisabled();
     }
 
@@ -459,7 +854,7 @@
       sheetSelector.innerHTML = '';
       const fragment = document.createDocumentFragment();
 
-      // 👉 Thêm placeholder trống làm mặc định
+      // ?? Thêm placeholder tr?ng làm m?c d?nh
       const placeholder = document.createElement('option');
       placeholder.value = '';
       placeholder.textContent = 'Select sheet';
@@ -467,7 +862,7 @@
       placeholder.selected = true;
       fragment.appendChild(placeholder);
 
-      // 👉 Thêm danh sách các sheet thật sự
+      // ?? Thêm danh sách các sheet th?t s?
       options.forEach((sheet) => {
         const option = document.createElement('option');
         option.value = sheet.title;
@@ -480,11 +875,11 @@
 
       sheetSelector.appendChild(fragment);
 
-      // 👉 Không chọn sheet mặc định nào hết
+      // ?? Không ch?n sheet m?c d?nh nào h?t
       setSheetName('');
       sheetSelector.value = '';
 
-      // 👉 Trạng thái hiển thị vẫn là “IDLE”
+      // ?? Tr?ng thái hi?n th? v?n là “IDLE”
       updateStatusBadge('IDLE', 'gray');
       sheetSelector.disabled = false;
     }
@@ -537,19 +932,18 @@
 
     function toggleRunning(isRunning) {
       state.running = isRunning;
-      runButton.disabled = isRunning || !state.sheetName;
+      refreshRunButtonState();
       runningBadge.classList.toggle('hidden', !isRunning);
       runButtonText.textContent = isRunning ? 'Sending...' : 'RUN LOGIN';
+      updateActionButtons();
     }
 
     function togglePolling(isPolling) {
       state.polling = isPolling;
-      if (isPolling) {
-        updateStatusBadge('POLLING...', 'blue');
-      } else if (!state.lastRunStatus || state.lastRunStatus === 'RUN') {
+      if (!isPolling && (!state.lastRunStatus || state.lastRunStatus === 'RUN')) {
         updateStatusBadge('IDLE', 'gray');
       }
-      stopPollingButton.classList.toggle('hidden', !isPolling);
+      updateActionButtons();
     }
 
     function toggleLoading(isLoading) {
@@ -640,15 +1034,19 @@
         source = resolveImageSource(rawImage);
       }
       captchaContainer.innerHTML = '';
+      captchaContainer.classList.remove('has-image', 'empty');
+      captchaContainer.style.removeProperty('width');
+      captchaContainer.style.removeProperty('height');
       if (source) {
         const img = document.createElement('img');
         img.src = source;
         img.alt = 'Captcha from Google Sheet';
+        captchaContainer.classList.add('has-image');
         captchaContainer.appendChild(img);
       } else {
         const span = document.createElement('span');
-        span.style.color = '#6b7280';
         span.textContent = 'No image available.';
+        captchaContainer.classList.add('empty');
         captchaContainer.appendChild(span);
       }
     }
@@ -730,11 +1128,14 @@
       const rawStatus = getCellValue(values, 'A2');
       const normalizedStatus = normalizeStatus(rawStatus);
       const statusChanged = normalizedStatus !== state.lastRunStatus;
+      const variant = resolveStatusVariant(normalizedStatus);
 
       if (normalizedStatus === 'RUN') {
-        updateStatusBadge('POLLING...', 'blue');
+        updateStatusBadge(normalizedStatus || 'RUN', variant);
         stopPollingButton.classList.remove('hidden');
         state.lastRunStatus = normalizedStatus;
+        refreshRunButtonState();
+        updateActionButtons();
         return;
       }
 
@@ -743,47 +1144,28 @@
 
       if (statusChanged) {
         if (normalizedStatus === 'DONE' || normalizedStatus === 'ERROR') {
-          // 🔸 Chỉ hiển thị popup nếu người dùng vừa nhấn RUN LOGIN
-          if (state.running || state.lastRunStatus === 'RUN') {
-            const type = normalizedStatus === 'DONE' ? 'success' : 'error';
-            const message =
-              normalizedStatus === 'DONE'
-                ? 'Run completed successfully.'
-                : 'Run finished with ERROR status.';
-            setFeedback(type, message, { popup: true });
-          } else {
-            // 🔸 Nếu chỉ load trang hoặc đổi sheet thì chỉ log text, không popup
-            const message =
-              normalizedStatus === 'DONE'
-                ? 'Run completed successfully.'
-                : 'Run finished with ERROR status.';
-            setFeedback(
-              normalizedStatus === 'DONE' ? 'success' : 'error',
-              message,
-              { popup: false }
-            );
-          }
-          updateStatusBadge(
-            normalizedStatus === 'DONE' ? 'SUCCESS' : 'ERROR',
-            normalizedStatus === 'DONE' ? 'green' : 'red'
-          );
-        } else if (normalizedStatus) {
-          clearFeedback();
-          updateStatusBadge(normalizedStatus, 'gray');
+          const message =
+            normalizedStatus === 'DONE'
+              ? 'Run completed successfully.'
+              : 'Run finished with ERROR status.';
+          const feedbackType =
+            normalizedStatus === 'DONE' ? 'success' : 'error';
+
+          setFeedback(feedbackType, message);
         } else {
           clearFeedback();
-          updateStatusBadge('IDLE', 'gray');
         }
-      } else if (normalizedStatus) {
+      } else if (!normalizedStatus) {
         clearFeedback();
-        updateStatusBadge(normalizedStatus, 'gray');
-      } else {
-        clearFeedback();
-        updateStatusBadge('IDLE', 'gray');
       }
 
-      // ✅ Cập nhật trạng thái sau khi xử lý
+      const label = normalizedStatus || 'IDLE';
+      const badgeVariant = normalizedStatus ? variant : 'gray';
+      updateStatusBadge(label, badgeVariant);
+
       state.lastRunStatus = normalizedStatus;
+      refreshRunButtonState();
+      updateActionButtons();
     }
     async function fetchSheetValues() {
       if (!state.sheetName) {
@@ -882,7 +1264,7 @@
         startPolling();
       } catch (error) {
         console.error('RUN LOGIN failed:', error);
-        setFeedback('error', error.message || 'RUN LOGIN failed.', { popup: true });
+        setFeedback('error', error.message || 'RUN LOGIN failed.');
         stopPolling();
       } finally {
         toggleRunning(false);
@@ -1018,6 +1400,8 @@
     // Initial load
     async function initializeDashboard() {
       updateSubmitDisabled();
+      refreshRunButtonState();
+      updateActionButtons();
       try {
         await fetchSheetList();
         if (state.sheetName) {
