@@ -24,6 +24,7 @@ const sheetTableContainer = document.getElementById(
 );
 const refreshButton = document.getElementById('refreshButton');
 const latestLogEl = document.getElementById('latestLog');
+const captchaPanel = document.querySelector('[data-fragment="captcha-panel"]');
 const quizPanel = document.querySelector('[data-fragment="quiz-panel"]');
 const runningBadge = document.getElementById('runningBadge');
 const pollingBadge = document.getElementById('pollingBadge');
@@ -44,11 +45,20 @@ if (!api) {
 
 function setQuizVisibility(enabled) {
   if (!quizPanel) {
+    if (captchaPanel) {
+      const hideCaptchaOnly = Boolean(enabled);
+      captchaPanel.classList.toggle('hidden', hideCaptchaOnly);
+      captchaPanel.setAttribute('aria-hidden', hideCaptchaOnly ? 'true' : 'false');
+    }
     return;
   }
   const shouldShow = Boolean(enabled);
   quizPanel.classList.toggle('hidden', !shouldShow);
   quizPanel.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+  if (captchaPanel) {
+    captchaPanel.classList.toggle('hidden', shouldShow);
+    captchaPanel.setAttribute('aria-hidden', shouldShow ? 'true' : 'false');
+  }
 }
 
 function setQuizFeatureState(enabled, { silent = true } = {}) {

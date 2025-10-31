@@ -145,8 +145,18 @@ function handleCaptchaUpdate(payload, { silent = true } = {}) {
   showCaptcha(imageValue || null);
 
   if (payload && Object.prototype.hasOwnProperty.call(payload, "quiz")) {
-    const enableSilent = !payload.quiz;
-    applyQuizFeatureFlag(payload.quiz, { silent: enableSilent });
+    let rawQuiz = payload.quiz;
+    if (typeof rawQuiz === "string") {
+      const normalizedString = rawQuiz.trim().toLowerCase();
+      rawQuiz = ["true", "1", "yes", "on"].includes(normalizedString);
+    } else if (typeof rawQuiz === "number") {
+      rawQuiz = rawQuiz === 1;
+    } else {
+      rawQuiz = Boolean(rawQuiz);
+    }
+
+    const enableSilent = !rawQuiz;
+    applyQuizFeatureFlag(rawQuiz, { silent: enableSilent });
     return;
   }
 
