@@ -1,0 +1,456 @@
+﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = "https://soxprvsxblsznvslxuhk.supabase.co";
+const SUPABASE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNveHBydnN4Ymxzem52c2x4dWhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE4MDg3MTcsImV4cCI6MjA3NzM4NDcxN30.v9tR-dlYmr97A7nibCL-3sEHIkXvU_Pn7MMLqDx74q8";
+
+const QUIZ_TABLE = "quiz_questions";
+const QUIZ_FIELDS = `
+  id,
+  name,
+  question_no,
+  quiz_id,
+  question_text,
+  answer_id,
+  answer_text,
+  selector,
+  position,
+  is_correct,
+  updated_at
+`;
+const STORAGE_KEY = "quiz:selectedName";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const state = {
+  name: "",
+  questions: [],
+  answers: new Map(),
+  loading: false,
+};
+
+const elements = {
+  submitButton: document.getElementById("quizSubmitButton"),
+  message: document.getElementById("quizMessage"),
+  questionCount: document.getElementById("quizQuestionCount"),
+  questionsContainer: document.getElementById("quizQuestions"),
+  latestLog: document.getElementById("latestLog"),
+};
+
+function updateViewportHeight() {
+  const viewport = window.visualViewport;
+  const height = viewport ? viewport.height : window.innerHeight;
+  if (height) {
+    document.documentElement.style.setProperty("--app-vh", `${height}px`);
+  }
+}
+
+updateViewportHeight();
+window.addEventListener("resize", updateViewportHeight);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", updateViewportHeight);
+  window.visualViewport.addEventListener("scroll", updateViewportHeight);
+}
+
+function syncSelectedName() {
+  let stored = "";
+  try {
+    stored = localStorage.getItem(STORAGE_KEY) || "";
+  } catch (error) {
+    stored = "";
+  }
+  state.name = stored.trim();
+  try {
+    window.currentBot = state.name || "";
+  } catch (error) {
+    // ignore storage errors
+  }
+}
+
+function setMessage(type, text) {
+  const el = elements.message;
+  if (!text) {
+    el.textContent = "";
+    el.className = "quiz-message hidden";
+    return;
+  }
+  const allowed = new Set(["info", "success", "error", "warning"]);
+  const variant = allowed.has(type) ? type : "info";
+  el.textContent = text;
+  el.className = `quiz-message is-${variant}`;
+}
+
+function renderMeta(meta = {}) {
+  // Header trang quiz cố định, không cần cập nhật động.
+  void meta;
+}
+
+function setLoading(isLoading) {
+  state.loading = isLoading;
+  updateSubmitDisabled();
+}
+
+function updateSubmitDisabled() {
+  const hasQuestions = state.questions.length > 0;
+  const allAnswered = state.answers.size === state.questions.length && hasQuestions;
+  elements.submitButton.disabled = state.loading || !allAnswered;
+}
+
+function clearAnswers() {
+  state.answers.clear();
+  updateSubmitDisabled();
+}
+
+function normalizePosition(position) {
+  if (!position) return null;
+  if (typeof position === "string") {
+    try {
+      return JSON.parse(position);
+    } catch (error) {
+      return null;
+    }
+  }
+  if (typeof position === "object") {
+    return position;
+  }
+  return null;
+}
+
+function groupRecords(records) {
+  if (!Array.isArray(records)) {
+    return [];
+  }
+
+  const map = new Map();
+
+  records.forEach((row) => {
+    const questionKey = row.quiz_id || `${row.name || "quiz"}-${row.question_no}`;
+    if (!map.has(questionKey)) {
+      map.set(questionKey, {
+        key: questionKey,
+        name: row.name,
+        questionNo: row.question_no,
+        quizId: row.quiz_id,
+        text: row.question_text,
+        answers: [],
+      });
+    }
+
+    map.get(questionKey).answers.push({
+      rowId: row.id,
+      answerId: row.answer_id,
+      text: row.answer_text || "",
+      selector: row.selector || "",
+      position: normalizePosition(row.position),
+      isCorrect: Boolean(row.is_correct),
+    });
+  });
+
+  const questions = Array.from(map.values()).sort((a, b) => a.questionNo - b.questionNo);
+
+  questions.forEach((question) => {
+    question.answers.sort((a, b) => a.answerId.localeCompare(b.answerId));
+    question.answers.forEach((answer, index) => {
+      answer.label = String.fromCharCode(65 + index);
+    });
+  });
+
+  return questions;
+}
+
+function renderQuizQuestions(questions) {
+  const container = elements.questionsContainer;
+  container.innerHTML = "";
+
+  if (!questions.length) {
+    const placeholder = document.createElement("p");
+    placeholder.className = "muted";
+    placeholder.textContent = "Chưa có câu hỏi nào cho bot này.";
+    container.appendChild(placeholder);
+    elements.questionCount.textContent = "0 câu hỏi";
+    updateSubmitDisabled();
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  questions.forEach((question) => {
+    const card = document.createElement("article");
+    card.className = "quiz-question-card";
+
+    const header = document.createElement("header");
+    const code = document.createElement("span");
+    code.className = "quiz-question-code";
+    code.textContent = `Câu hỏi ${question.questionNo}`;
+
+    header.appendChild(code);
+    card.appendChild(header);
+
+    const text = document.createElement("p");
+    text.className = "quiz-question-text";
+    text.textContent = question.text || "";
+    card.appendChild(text);
+
+    const answersList = document.createElement("div");
+    answersList.className = "quiz-options";
+
+    question.answers.forEach((answer) => {
+      const label = document.createElement("label");
+      label.className = "quiz-option";
+
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = `question-${question.key}`;
+      input.value = answer.rowId;
+      input.dataset.questionKey = question.key;
+      input.addEventListener("change", () => {
+        state.answers.set(question.key, answer.rowId);
+        updateSubmitDisabled();
+      });
+
+      if (state.answers.get(question.key) === answer.rowId) {
+        input.checked = true;
+      }
+
+      const badge = document.createElement("span");
+      badge.className = "quiz-option-code";
+      badge.textContent = answer.label || "";
+
+      const content = document.createElement("div");
+      content.className = "quiz-option-content";
+
+      const answerText = document.createElement("span");
+      answerText.className = "quiz-option-text";
+      answerText.textContent = answer.text || "";
+      content.appendChild(answerText);
+
+      label.appendChild(input);
+      label.appendChild(badge);
+      label.appendChild(content);
+      answersList.appendChild(label);
+    });
+
+    card.appendChild(answersList);
+    fragment.appendChild(card);
+  });
+
+  container.appendChild(fragment);
+  elements.questionCount.textContent = `${questions.length} câu hỏi`;
+  updateSubmitDisabled();
+}
+
+async function loadQuiz({ silent = false } = {}) {
+  const resolvedName = state.name.trim();
+  if (!resolvedName) {
+    state.questions = [];
+    clearAnswers();
+    renderQuizQuestions([]);
+    renderMeta();
+      setMessage("error", "Chua c� bot n�o du?c ch?n. Hay ch?n bot trong Control Panel.");
+      setMessage("error", "Chưa có bot nào được chọn. Hãy quay lại Dashboard để chọn bot.");
+    }
+    return;
+  }
+
+  if (!silent) {
+    setMessage("info", "Đang tải câu hỏi từ Supabase...");
+  }
+
+  setLoading(true);
+
+  try {
+    const { data, error } = await supabase
+      .from(QUIZ_TABLE)
+      .select(QUIZ_FIELDS)
+      .eq("name", resolvedName)
+      .order("question_no", { ascending: true })
+      .order("answer_id", { ascending: true });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!Array.isArray(data) || data.length === 0) {
+      state.questions = [];
+      clearAnswers();
+      renderQuizQuestions([]);
+      renderMeta();
+      setMessage("warning", "Chưa có câu hỏi nào trong bảng quiz_questions cho bot này.");
+      return;
+    }
+
+    const questions = groupRecords(data);
+    state.questions = questions;
+    clearAnswers();
+
+    questions.forEach((question) => {
+      const selected = question.answers.find((answer) => answer.isCorrect);
+      if (selected) {
+        state.answers.set(question.key, selected.rowId);
+      }
+    });
+
+    renderQuizQuestions(questions);
+
+    const latestUpdated = data
+      .map((row) => (row.updated_at ? new Date(row.updated_at).getTime() : 0))
+      .reduce((acc, cur) => Math.max(acc, cur), 0);
+
+    renderMeta({ updatedAt: latestUpdated ? new Date(latestUpdated) : null });
+
+    const answeredCount = [...state.answers.values()].filter(Boolean).length;
+    if (answeredCount) {
+      setMessage("info", `Đã khôi phục ${answeredCount}/${questions.length} đáp án đã lưu.`);
+    } else if (!silent) {
+      setMessage("success", `Đã tải ${questions.length} câu hỏi.`);
+    }
+  } catch (error) {
+    console.error("Failed to load quiz", error);
+    state.questions = [];
+    clearAnswers();
+    renderQuizQuestions([]);
+    renderMeta();
+    setMessage("error", error.message || "Không thể tải dữ liệu quiz.");
+  } finally {
+    setLoading(false);
+    updateSubmitDisabled();
+  }
+}
+
+async function handleSubmit() {
+  if (state.questions.length === 0) {
+    setMessage("error", "Bạn cần tải quiz trước khi nộp bài.");
+    return;
+  }
+
+  if (state.answers.size !== state.questions.length) {
+    setMessage("error", "Vui lòng trả lời đầy đủ tất cả các câu hỏi trước khi nộp.");
+    return;
+  }
+
+  if (!state.name) {
+    setMessage("error", "Không xác định được bot/quiz để lưu kết quả.");
+    return;
+  }
+
+  const allAnswerIds = [];
+  const correctAnswerIds = [];
+  const answerLabels = [];
+
+  state.questions.forEach((question) => {
+    const selectedRowId = state.answers.get(question.key);
+    question.answers.forEach((answer) => {
+      if (answer.rowId) {
+        allAnswerIds.push(answer.rowId);
+      }
+      const isCorrect = answer.rowId === selectedRowId;
+      answer.isCorrect = isCorrect;
+      if (isCorrect) {
+        correctAnswerIds.push(answer.rowId);
+        answerLabels.push(answer.label || "?");
+      }
+    });
+  });
+
+  if (!allAnswerIds.length) {
+    setMessage("error", "Không tìm thấy danh sách đáp án để cập nhật.");
+    return;
+  }
+
+  try {
+    setLoading(true);
+    setMessage("info", "Đang lưu đáp án đã chọn...");
+
+    const { error: clearError } = await supabase
+      .from(QUIZ_TABLE)
+      .update({ is_correct: false })
+      .in("id", allAnswerIds);
+
+    if (clearError) {
+      throw new Error(clearError.message);
+    }
+
+    if (correctAnswerIds.length) {
+      const { error: markError } = await supabase
+        .from(QUIZ_TABLE)
+        .update({ is_correct: true })
+        .in("id", correctAnswerIds);
+
+      if (markError) {
+        throw new Error(markError.message);
+      }
+    }
+
+    renderQuizQuestions(state.questions);
+    const answerString = answerLabels.join(",");
+    setMessage(
+      "success",
+      answerString ? `Đã lưu đáp án: ${answerString}.` : "Đã lưu đáp án."
+    );
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (error) {
+    console.error("Failed to submit answers", error);
+    setMessage("error", error.message || "Không thể lưu đáp án. Hãy thử lại.");
+  } finally {
+    setLoading(false);
+    updateSubmitDisabled();
+  }
+}
+
+function handleSelectedNameChange({ reload = true } = {}) {
+  syncSelectedName();
+
+  if (!state.name) {
+    state.questions = [];
+    clearAnswers();
+    renderQuizQuestions([]);
+    renderMeta();
+    setMessage("error", "Chưa có bot nào được chọn. Hãy quay lại Dashboard để chọn bot.");
+    setMessage("error", "Chua c� bot n�o du?c ch?n. Hay ch?n bot trong Control Panel.");
+  }
+
+  try {
+    window.currentBot = state.name;
+  } catch (error) {
+    // ignore if window not accessible
+  }
+
+  state.questions = [];
+  clearAnswers();
+  renderQuizQuestions([]);
+  renderMeta();
+
+  if (reload) {
+    loadQuiz({ silent: false });
+  }
+}
+
+elements.submitButton.addEventListener("click", handleSubmit);
+
+document.addEventListener("DOMContentLoaded", () => {
+  syncSelectedName();
+  try {
+    window.currentBot = state.name || "";
+  } catch (error) {
+    // ignore storage errors
+  }
+  renderQuizQuestions([]);
+  renderMeta();
+  updateSubmitDisabled();
+
+  if (!state.name) {
+    setMessage("error", "Chưa có bot nào được chọn. Hãy quay lại Dashboard để chọn bot.");
+    setMessage("error", "Chua c� bot n�o du?c ch?n. Hay ch?n bot trong Control Panel.");
+  }
+
+  loadQuiz({ silent: false });
+});
+
+window.addEventListener("storage", (event) => {
+  if (event.key === STORAGE_KEY) {
+    handleSelectedNameChange({ reload: true });
+  }
+});
+
+
+
