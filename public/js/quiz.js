@@ -29,6 +29,8 @@ const state = {
   loading: false,
 };
 
+let featureEnabled = false;
+
 const elements = {
   submitButton: document.getElementById("quizSubmitButton"),
   message: document.getElementById("quizMessage"),
@@ -93,7 +95,7 @@ function setLoading(isLoading) {
 function updateSubmitDisabled() {
   const hasQuestions = state.questions.length > 0;
   const allAnswered = state.answers.size === state.questions.length && hasQuestions;
-  elements.submitButton.disabled = state.loading || !allAnswered;
+  elements.submitButton.disabled = state.loading || !allAnswered || !featureEnabled;
 }
 
 function clearAnswers() {
@@ -240,20 +242,37 @@ function renderQuizQuestions(questions) {
 }
 
 async function loadQuiz({ silent = false } = {}) {
+  if (!featureEnabled) {
+    if (!silent) {
+      setMessage("info", "Quiz is not enabled for this bot.");
+    } else {
+      setMessage("", "");
+    }
+    state.questions = [];
+    clearAnswers();
+    renderQuizQuestions([]);
+    renderMeta();
+    updateSubmitDisabled();
+    return;
+  }
+
   const resolvedName = state.name.trim();
   if (!resolvedName) {
     state.questions = [];
     clearAnswers();
     renderQuizQuestions([]);
     renderMeta();
-      setMessage("error", "Chua c� bot n�o du?c ch?n. Hay ch?n bot trong Control Panel.");
-      setMessage("error", "Chưa có bot nào được chọn. Hãy quay lại Dashboard để chọn bot.");
+    if (!silent) {
+      setMessage("error", "No bot selected. Please choose a bot in the Control Panel.");
+    } else {
+      setMessage("", "");
     }
+    updateSubmitDisabled();
     return;
   }
 
   if (!silent) {
-    setMessage("info", "Đang tải câu hỏi từ Supabase...");
+    setMessage("info", "Loading quiz questions from Supabase...");
   }
 
   setLoading(true);
@@ -275,7 +294,7 @@ async function loadQuiz({ silent = false } = {}) {
       clearAnswers();
       renderQuizQuestions([]);
       renderMeta();
-      setMessage("warning", "Chưa có câu hỏi nào trong bảng quiz_questions cho bot này.");
+      setMessage("warning", "No quiz questions found for this bot.");
       return;
     }
 
@@ -300,9 +319,11 @@ async function loadQuiz({ silent = false } = {}) {
 
     const answeredCount = [...state.answers.values()].filter(Boolean).length;
     if (answeredCount) {
-      setMessage("info", `Đã khôi phục ${answeredCount}/${questions.length} đáp án đã lưu.`);
+      setMessage("info", `Restored ${answeredCount}/${questions.length} previous answers.`);
     } else if (!silent) {
-      setMessage("success", `Đã tải ${questions.length} câu hỏi.`);
+      setMessage("success", `Loaded ${questions.length} questions.`);
+    } else {
+      setMessage("", "");
     }
   } catch (error) {
     console.error("Failed to load quiz", error);
@@ -310,26 +331,30 @@ async function loadQuiz({ silent = false } = {}) {
     clearAnswers();
     renderQuizQuestions([]);
     renderMeta();
-    setMessage("error", error.message || "Không thể tải dữ liệu quiz.");
+    setMessage("error", error.message || "Unable to load quiz data.");
   } finally {
     setLoading(false);
     updateSubmitDisabled();
   }
 }
-
 async function handleSubmit() {
+  if (!featureEnabled) {
+    setMessage("error", "Quiz is not enabled for this bot.");
+    return;
+  }
+
   if (state.questions.length === 0) {
-    setMessage("error", "Bạn cần tải quiz trước khi nộp bài.");
+    setMessage("error", "Please load the quiz before submitting.");
     return;
   }
 
   if (state.answers.size !== state.questions.length) {
-    setMessage("error", "Vui lòng trả lời đầy đủ tất cả các câu hỏi trước khi nộp.");
+    setMessage("error", "Please answer every question before submitting.");
     return;
   }
 
   if (!state.name) {
-    setMessage("error", "Không xác định được bot/quiz để lưu kết quả.");
+    setMessage("error", "Unable to determine which bot should receive the results.");
     return;
   }
 
@@ -353,13 +378,13 @@ async function handleSubmit() {
   });
 
   if (!allAnswerIds.length) {
-    setMessage("error", "Không tìm thấy danh sách đáp án để cập nhật.");
+    setMessage("error", "No answers found to update.");
     return;
   }
 
   try {
     setLoading(true);
-    setMessage("info", "Đang lưu đáp án đã chọn...");
+    setMessage("info", "Saving selected answers...");
 
     const { error: clearError } = await supabase
       .from(QUIZ_TABLE)
@@ -385,28 +410,41 @@ async function handleSubmit() {
     const answerString = answerLabels.join(",");
     setMessage(
       "success",
-      answerString ? `Đã lưu đáp án: ${answerString}.` : "Đã lưu đáp án."
+      answerString ? `Saved answers: ${answerString}.` : "Answers saved."
     );
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
     console.error("Failed to submit answers", error);
-    setMessage("error", error.message || "Không thể lưu đáp án. Hãy thử lại.");
+    setMessage("error", error.message || "Unable to save answers. Please try again.");
   } finally {
     setLoading(false);
     updateSubmitDisabled();
   }
 }
+function handleSelectedNameChange({ reload = true, name } = {}) {
+  if (typeof name === "string") {
+    state.name = name.trim();
+  } else {
+    syncSelectedName();
+  }
 
-function handleSelectedNameChange({ reload = true } = {}) {
-  syncSelectedName();
+  if (!featureEnabled) {
+    updateSubmitDisabled();
+    return;
+  }
 
   if (!state.name) {
     state.questions = [];
     clearAnswers();
     renderQuizQuestions([]);
     renderMeta();
-    setMessage("error", "Chưa có bot nào được chọn. Hãy quay lại Dashboard để chọn bot.");
-    setMessage("error", "Chua c� bot n�o du?c ch?n. Hay ch?n bot trong Control Panel.");
+    if (reload) {
+      setMessage("error", "No bot selected. Please choose a bot in the Control Panel.");
+    } else {
+      setMessage("", "");
+    }
+    updateSubmitDisabled();
+    return;
   }
 
   try {
@@ -422,35 +460,108 @@ function handleSelectedNameChange({ reload = true } = {}) {
 
   if (reload) {
     loadQuiz({ silent: false });
+  } else {
+    updateSubmitDisabled();
   }
 }
-
 elements.submitButton.addEventListener("click", handleSubmit);
 
 document.addEventListener("DOMContentLoaded", () => {
   syncSelectedName();
+
+  if (typeof window !== "undefined" && typeof window.__pendingQuizSelectedName !== "undefined") {
+    const pendingName = window.__pendingQuizSelectedName;
+    delete window.__pendingQuizSelectedName;
+    if (typeof pendingName === "string") {
+      state.name = pendingName.trim();
+    }
+  }
+
   try {
     window.currentBot = state.name || "";
   } catch (error) {
     // ignore storage errors
   }
+
   renderQuizQuestions([]);
   renderMeta();
   updateSubmitDisabled();
 
+  if (typeof window !== "undefined" && typeof window.__pendingQuizFeatureEnabled !== "undefined") {
+    const pendingFeature = window.__pendingQuizFeatureEnabled;
+    delete window.__pendingQuizFeatureEnabled;
+    setQuizFeatureEnabled(pendingFeature, { silent: true });
+  }
+
+  if (!featureEnabled) {
+    setMessage("", "");
+    return;
+  }
+
   if (!state.name) {
-    setMessage("error", "Chưa có bot nào được chọn. Hãy quay lại Dashboard để chọn bot.");
-    setMessage("error", "Chua c� bot n�o du?c ch?n. Hay ch?n bot trong Control Panel.");
+    setMessage("error", "No bot selected. Please choose a bot in the Control Panel.");
+    return;
   }
 
   loadQuiz({ silent: false });
 });
-
 window.addEventListener("storage", (event) => {
   if (event.key === STORAGE_KEY) {
     handleSelectedNameChange({ reload: true });
   }
 });
 
+if (typeof window !== "undefined") {
+  window.setQuizFeatureEnabled = (enabled, options = {}) => setQuizFeatureEnabled(enabled, options);
+  window.setQuizSelectedName = (name, options = {}) =>
+    handleSelectedNameChange({ ...(typeof options === "object" && options !== null ? options : {}), name });
+}
 
+function setQuizFeatureEnabled(enabled, { silent = false } = {}) {
+  const normalized = Boolean(enabled);
+
+  if (featureEnabled === normalized) {
+    updateSubmitDisabled();
+    return;
+  }
+
+  featureEnabled = normalized;
+
+  if (!featureEnabled) {
+    state.questions = [];
+    clearAnswers();
+    renderQuizQuestions([]);
+    renderMeta();
+    if (silent) {
+      setMessage("", "");
+    } else {
+      setMessage("info", "Quiz is not enabled for this bot.");
+    }
+    updateSubmitDisabled();
+    return;
+  }
+
+  updateSubmitDisabled();
+
+  if (!state.name) {
+    if (silent) {
+      setMessage("", "");
+    } else {
+      setMessage("error", "No bot selected. Please choose a bot in the Control Panel.");
+    }
+    return;
+  }
+
+  if (silent) {
+    return;
+  }
+
+  loadQuiz({ silent });
+}
+
+if (typeof window !== "undefined") {
+  window.setQuizFeatureEnabled = (enabled, options = {}) => setQuizFeatureEnabled(enabled, options);
+  window.setQuizSelectedName = (name, options = {}) =>
+    handleSelectedNameChange({ ...(typeof options === "object" && options !== null ? options : {}), name });
+}
 

@@ -8,6 +8,7 @@ const state = {
   lastRunStatus: '',
   sheetName: '',
   sheets: [],
+  quizEnabled: false,
 };
 
 const runButton = document.getElementById('runButton');
@@ -23,6 +24,7 @@ const sheetTableContainer = document.getElementById(
 );
 const refreshButton = document.getElementById('refreshButton');
 const latestLogEl = document.getElementById('latestLog');
+const quizPanel = document.querySelector('[data-fragment="quiz-panel"]');
 const runningBadge = document.getElementById('runningBadge');
 const pollingBadge = document.getElementById('pollingBadge');
 const statusPanel = document.getElementById('statusPanel');
@@ -38,6 +40,29 @@ const STATUS_BADGE_VARIANTS = ['gray', 'green', 'blue', 'red', 'amber'];
 
 if (!api) {
   console.warn('dashboardApi service is not available. Requests will fail.');
+}
+
+function setQuizVisibility(enabled) {
+  if (!quizPanel) {
+    return;
+  }
+  const shouldShow = Boolean(enabled);
+  quizPanel.classList.toggle('hidden', !shouldShow);
+  quizPanel.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+}
+
+function setQuizFeatureState(enabled, { silent = true } = {}) {
+  const normalized = Boolean(enabled);
+  state.quizEnabled = normalized;
+  setQuizVisibility(normalized);
+
+  if (typeof window !== 'undefined') {
+    if (typeof window.setQuizFeatureEnabled === 'function') {
+      window.setQuizFeatureEnabled(normalized, { silent });
+    } else {
+      window.__pendingQuizFeatureEnabled = normalized;
+    }
+  }
 }
 
 function updateViewportHeight(options = {}) {
@@ -70,6 +95,7 @@ function updateViewportHeight(options = {}) {
 }
 
 updateViewportHeight({ force: true });
+setQuizFeatureState(state.quizEnabled, { silent: true });
 
 const detachViewportListeners = (() => {
   const viewportHandler = () => updateViewportHeight();
@@ -230,6 +256,7 @@ function updateStatusBadge(label, variant = 'gray') {
 }
 
 function setSheetName(name) {
+  const previousName = state.sheetName;
   const normalized = typeof name === 'string' ? name : '';
   state.sheetName = normalized;
   if (sheetSelector) {
@@ -244,6 +271,21 @@ function setSheetName(name) {
   } catch (error) {
     // ignore storage errors
   }
+
+  if (previousName !== normalized) {
+    setQuizFeatureState(false, { silent: true });
+  }
+
+  if (typeof window.setQuizSelectedName === 'function') {
+    window.setQuizSelectedName(normalized);
+  } else {
+    window.__pendingQuizSelectedName = normalized;
+  }
+
+  if (!normalized) {
+    setQuizFeatureState(false, { silent: true });
+  }
+
   state.lastRunStatus = '';
   refreshRunButtonState();
   updateActionButtons();
@@ -584,6 +626,13 @@ function handleRunState(values) {
 async function fetchSheetValues() {
   if (!state.sheetName) {
     setFeedback('info', 'Select a sheet to load data.');
+    state.quizEnabled = false;
+    setQuizVisibility(false);
+    if (typeof window.setQuizFeatureEnabled === 'function') {
+      window.setQuizFeatureEnabled(false, { silent: true });
+    } else {
+      window.__pendingQuizFeatureEnabled = false;
+    }
     return [];
   }
 
@@ -600,6 +649,10 @@ async function fetchSheetValues() {
     renderLogs(values);
     renderTable(values);
     handleRunState(values);
+    if (Object.prototype.hasOwnProperty.call(data, 'quizEnabled')) {
+      const enableSilent = !data.quizEnabled;
+      setQuizFeatureState(data.quizEnabled, { silent: enableSilent });
+    }
 
     const supabaseLogsActive =
       typeof window !== 'undefined' && window.__supabaseLogsActive;
@@ -617,6 +670,7 @@ async function fetchSheetValues() {
     return values;
   } catch (error) {
     console.error('Failed to fetch sheet:', error);
+    setQuizFeatureState(false, { silent: true });
     throw error;
   } finally {
     toggleLoading(false);
@@ -643,6 +697,7 @@ function startPolling() {
   fetchSheetValues().catch((error) => {
     console.error('Failed to fetch sheet:', error);
     setFeedback('error', error.message);
+    setQuizFeatureState(false, { silent: true });
     stopPolling();
   });
 }
@@ -841,4 +896,13 @@ async function initializeDashboard() {
 }
 
 initializeDashboard();
+
+if (typeof window !== 'undefined') {
+  window.setDashboardQuizFeatureState = (enabled, options = {}) =>
+    setQuizFeatureState(enabled, options);
+}
+
+
+
+
 

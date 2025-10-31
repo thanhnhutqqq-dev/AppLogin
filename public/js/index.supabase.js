@@ -126,6 +126,35 @@ const showCaptcha = (value) => {
   }
 };
 
+function applyQuizFeatureFlag(value, { silent = true } = {}) {
+  const normalized = Boolean(value);
+  if (
+    typeof window !== "undefined" &&
+    typeof window.setDashboardQuizFeatureState === "function"
+  ) {
+    window.setDashboardQuizFeatureState(normalized, { silent });
+  } else if (typeof window !== "undefined") {
+    window.__pendingQuizFeatureEnabled = normalized;
+  }
+}
+
+function handleCaptchaUpdate(payload, { silent = true } = {}) {
+  const imageValue = payload && Object.prototype.hasOwnProperty.call(payload, "image_base64")
+    ? payload.image_base64
+    : null;
+  showCaptcha(imageValue || null);
+
+  if (payload && Object.prototype.hasOwnProperty.call(payload, "quiz")) {
+    const enableSilent = !payload.quiz;
+    applyQuizFeatureFlag(payload.quiz, { silent: enableSilent });
+    return;
+  }
+
+  if (!payload) {
+    applyQuizFeatureFlag(false, { silent });
+  }
+}
+
 let currentBot = "";
 window.currentBot = currentBot;
 let captchaChannel = null;
@@ -159,7 +188,7 @@ sheetSelector.addEventListener("change", (e) => {
 async function loadLatestCaptcha(botName) {
   const { data, error } = await supabase
     .from("captchas")
-    .select("image_base64, status, updated_at")
+    .select("image_base64, status, updated_at, quiz")
     .eq("name", botName)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -167,11 +196,11 @@ async function loadLatestCaptcha(botName) {
 
   if (error) {
     console.error("? Error loading captcha:", error.message);
-    showCaptcha(null);
+    handleCaptchaUpdate(null, { silent: true });
     return;
   }
 
-  showCaptcha(data?.image_base64 || null);
+  handleCaptchaUpdate(data, { silent: true });
 }
 
 // ?? L?y toàn b? log khi kh?i t?o
@@ -205,9 +234,10 @@ function subscribeToCaptcha(botName) {
         filter: `name=eq.${botName}`,
       },
       (payload) => {
-        const base64 = payload.new.image_base64;
+        const updated = payload?.new || null;
+        const base64 = updated?.image_base64;
         console.log("??? Captcha updated:", base64?.slice(0, 30) + "...");
-        showCaptcha(base64);
+        handleCaptchaUpdate(updated, { silent: true });
       }
     )
     .subscribe(async (status) => {
@@ -250,4 +280,7 @@ if (typeof window !== "undefined") {
   window.subscribeToCaptcha = subscribeToCaptcha;
   window.subscribeToLogs = subscribeToLogs;
 }
+
+
+
 

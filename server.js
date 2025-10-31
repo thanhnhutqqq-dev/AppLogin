@@ -128,10 +128,18 @@ app.post("/sheet", async (req, res) => {
         [sheetStatus, imageValue, imageValue, answerValue, logCellValue || ""],
       ];
 
+      const quizEnabled =
+        typeof captcha.quiz === "boolean"
+          ? captcha.quiz
+          : (typeof captcha.quiz === "string"
+              ? ["true", "1", "yes", "on"].includes(captcha.quiz.toLowerCase())
+              : Boolean(captcha.quiz));
+
       return res.json({
         values,
         sheetName,
         latestLog,
+        quizEnabled,
       });
     }
 
