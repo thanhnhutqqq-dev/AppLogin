@@ -412,6 +412,9 @@ async function handleSubmit() {
       "success",
       answerString ? `Saved answers: ${answerString}.` : "Answers saved."
     );
+    if (typeof window !== "undefined" && typeof window.requestSheetRefresh === "function") {
+      window.requestSheetRefresh();
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
     console.error("Failed to submit answers", error);
@@ -564,4 +567,3 @@ if (typeof window !== "undefined") {
   window.setQuizSelectedName = (name, options = {}) =>
     handleSelectedNameChange({ ...(typeof options === "object" && options !== null ? options : {}), name });
 }
-

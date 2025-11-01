@@ -910,7 +910,14 @@ initializeDashboard();
 if (typeof window !== 'undefined') {
   window.setDashboardQuizFeatureState = (enabled, options = {}) =>
     setQuizFeatureState(enabled, options);
+  window.requestSheetRefresh = () => {
+    fetchSheetValues().catch((error) => {
+      console.error('Manual refresh failed:', error);
+    });
+  };
 }
+
+
 
 
 
