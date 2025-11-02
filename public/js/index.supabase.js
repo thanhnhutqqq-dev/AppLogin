@@ -1,4 +1,4 @@
-﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ?? Supabase config
 const SUPABASE_URL = "https://soxprvsxblsznvslxuhk.supabase.co";
@@ -115,6 +115,51 @@ function prependLogEntry(log) {
 
 resetLogDisplay();
 
+const statusListeners = new Set();
+const lastKnownStatusByBot = new Map();
+
+function normalizeStatusValue(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return String(value);
+}
+
+function notifyStatusListeners(botName, rawStatus, source = "realtime") {
+  if (!botName) {
+    return;
+  }
+
+  const normalizedStatus = normalizeStatusValue(rawStatus);
+  const previousStatus = lastKnownStatusByBot.get(botName);
+  if (previousStatus === normalizedStatus) {
+    return;
+  }
+
+  lastKnownStatusByBot.set(botName, normalizedStatus);
+  statusListeners.forEach((listener) => {
+    try {
+      listener({ botName, status: normalizedStatus, source });
+    } catch (listenerError) {
+      console.error("Realtime status listener failed:", listenerError);
+    }
+  });
+}
+
+function addCaptchaStatusListener(listener) {
+  if (typeof listener !== "function") {
+    return () => {};
+  }
+
+  statusListeners.add(listener);
+  return () => {
+    statusListeners.delete(listener);
+  };
+}
+
 const showCaptcha = (value) => {
   if (renderCaptchaGlobal) {
     renderCaptchaGlobal(value);
@@ -138,11 +183,21 @@ function applyQuizFeatureFlag(value, { silent = true } = {}) {
   }
 }
 
-function handleCaptchaUpdate(payload, { silent = true } = {}) {
+function handleCaptchaUpdate(payload, { silent = true, botName = currentBot } = {}) {
   const imageValue = payload && Object.prototype.hasOwnProperty.call(payload, "image_base64")
     ? payload.image_base64
     : null;
   showCaptcha(imageValue || null);
+
+  if (botName) {
+    let statusValue = null;
+    if (payload && Object.prototype.hasOwnProperty.call(payload, "status")) {
+      statusValue = payload.status;
+    } else if (payload && Object.prototype.hasOwnProperty.call(payload, "status_text")) {
+      statusValue = payload.status_text;
+    }
+    notifyStatusListeners(botName, statusValue, "captcha-update");
+  }
 
   if (payload && Object.prototype.hasOwnProperty.call(payload, "quiz")) {
     let rawQuiz = payload.quiz;
@@ -206,11 +261,11 @@ async function loadLatestCaptcha(botName) {
 
   if (error) {
     console.error("? Error loading captcha:", error.message);
-    handleCaptchaUpdate(null, { silent: true });
+    handleCaptchaUpdate(null, { silent: true, botName });
     return;
   }
 
-  handleCaptchaUpdate(data, { silent: true });
+  handleCaptchaUpdate(data, { silent: true, botName });
 }
 
 // ?? L?y toàn b? log khi kh?i t?o
@@ -233,6 +288,8 @@ async function loadAllLogs(botName) {
 function subscribeToCaptcha(botName) {
   if (captchaChannel) supabase.removeChannel(captchaChannel);
 
+  lastKnownStatusByBot.delete(botName);
+
   captchaChannel = supabase
     .channel(`realtime-captcha-${botName}`)
     .on(
@@ -247,7 +304,7 @@ function subscribeToCaptcha(botName) {
         const updated = payload?.new || null;
         const base64 = updated?.image_base64;
         console.log("??? Captcha updated:", base64?.slice(0, 30) + "...");
-        handleCaptchaUpdate(updated, { silent: true });
+        handleCaptchaUpdate(updated, { silent: true, botName });
       }
     )
     .subscribe(async (status) => {
@@ -289,8 +346,12 @@ function subscribeToLogs(botName) {
 if (typeof window !== "undefined") {
   window.subscribeToCaptcha = subscribeToCaptcha;
   window.subscribeToLogs = subscribeToLogs;
+  window.addCaptchaStatusListener = addCaptchaStatusListener;
+  if (typeof window.onCaptchaStatusSupportReady === "function") {
+    try {
+      window.onCaptchaStatusSupportReady();
+    } catch (error) {
+      console.error("Failed to notify dashboard about status listener support:", error);
+    }
+  }
 }
-
-
-
-
