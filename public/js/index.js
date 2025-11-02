@@ -1,9 +1,7 @@
-﻿const POLL_INTERVAL_MS = 1500;
 const state = {
   loading: false,
   polling: false,
   running: false,
-  pollHandle: null,
   values: [],
   lastRunStatus: '',
   sheetName: '',
@@ -35,6 +33,19 @@ const api = window.dashboardApi || null;
 let baseViewportHeight =
   Math.max(window.innerHeight || 0, window.visualViewport ? window.visualViewport.height : 0) || 0;
 let keyboardActive = false;
+
+let realtimeStatusUnsubscribe = null;
+let realtimeRefreshInFlight = false;
+let realtimeRefreshQueued = false;
+let realtimeSupportWarned = false;
+let fallbackRefreshTimer = null;
+const FALLBACK_REFRESH_INTERVAL_MS = 1500;
+
+if (typeof window !== 'undefined') {
+  window.onCaptchaStatusSupportReady = () => {
+    attachRealtimeStatusListener();
+  };
+}
 
 const FEEDBACK_TYPES = ['success', 'error', 'info'];
 const STATUS_BADGE_VARIANTS = ['gray', 'green', 'blue', 'red', 'amber'];
@@ -164,25 +175,38 @@ function resolveStatusVariant(status) {
 }
 
 function refreshRunButtonState() {
-  if (!runButton) {
-    return;
-  }
-  const normalized = normalizeStatus(state.lastRunStatus);
-  const isPending = normalized === 'PENDING';
-  const isRunningStatus = normalized === 'RUN';
-  const shouldDisable =
-    state.running || !state.sheetName || isPending || isRunningStatus;
-  runButton.disabled = shouldDisable;
-  runButton.classList.toggle('is-locked', isPending || isRunningStatus);
+  if (!runButton) return;
 
-  if (isPending) {
-    runButton.title = 'Status is PENDING. Please wait until it changes.';
-  } else if (isRunningStatus) {
-    runButton.title = 'Status is RUN. Please wait for completion.';
-  } else if (state.running) {
-    runButton.title = 'Request already in progress.';
-  } else if (!state.sheetName) {
-    runButton.title = 'Select a sheet to start.';
+  const normalized = normalizeStatus(state.lastRunStatus);
+
+  // Mặc định: luôn khóa nút
+  let shouldDisable = true;
+
+  // Nếu đang chạy hoặc đang chờ, nút phải bị khóa
+  if (state.running || normalized === 'IN-PROGRESS' || normalized === 'PENDING') {
+    shouldDisable = true;
+  }
+
+  // Nếu trạng thái là DONE hoặc ERROR → được click lại
+  if (!state.running && (normalized === 'DONE' || normalized === 'ERROR')) {
+    shouldDisable = false;
+  }
+
+  // Cập nhật trạng thái disable cho nút
+  runButton.disabled = shouldDisable;
+
+  // Thêm lớp "is-locked" để hiển thị hiệu ứng (nếu có CSS)
+  runButton.classList.toggle('is-locked', shouldDisable);
+
+  // Cập nhật tooltip (title)
+  if (shouldDisable) {
+    if (normalized === 'IN-PROGRESS') {
+      runButton.title = 'Đang chạy — vui lòng đợi.';
+    } else if (normalized === 'PENDING') {
+      runButton.title = 'Đang chờ xử lý — vui lòng đợi.';
+    } else {
+      runButton.title = 'RUN LOGIN bị khóa — chỉ bật khi trạng thái là DONE hoặc ERROR.';
+    }
   } else {
     runButton.removeAttribute('title');
   }
@@ -677,6 +701,8 @@ async function fetchSheetValues() {
       subscribeToLogs(window.currentBot);
     }
 
+    attachRealtimeStatusListener();
+
     return values;
   } catch (error) {
     console.error('Failed to fetch sheet:', error);
@@ -684,6 +710,114 @@ async function fetchSheetValues() {
     throw error;
   } finally {
     toggleLoading(false);
+  }
+}
+
+function hasRealtimeStatusSupport() {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.addCaptchaStatusListener === 'function'
+  );
+}
+
+function detachRealtimeStatusListener() {
+  if (typeof realtimeStatusUnsubscribe === 'function') {
+    realtimeStatusUnsubscribe();
+  }
+  realtimeStatusUnsubscribe = null;
+}
+
+function handleRealtimeStatusDetail(detail) {
+  if (!state.sheetName) {
+    return;
+  }
+
+  if (detail && detail.botName && detail.botName !== state.sheetName) {
+    return;
+  }
+
+  requestRealtimeSheetRefresh();
+}
+
+function attachRealtimeStatusListener() {
+  if (realtimeStatusUnsubscribe) {
+    return true;
+  }
+
+  if (!hasRealtimeStatusSupport()) {
+    return false;
+  }
+
+  realtimeStatusUnsubscribe = window.addCaptchaStatusListener((detail) => {
+    handleRealtimeStatusDetail(detail);
+  });
+
+  const attached = typeof realtimeStatusUnsubscribe === 'function';
+  if (attached && state.polling) {
+    stopFallbackRefreshLoop();
+  }
+
+  return attached;
+}
+
+function requestRealtimeSheetRefresh() {
+  if (!state.sheetName) {
+    return;
+  }
+
+  if (realtimeRefreshInFlight) {
+    realtimeRefreshQueued = true;
+    return;
+  }
+
+  realtimeRefreshInFlight = true;
+  fetchSheetValues()
+    .catch((error) => {
+      console.error('Realtime status refresh failed:', error);
+      const message = error.message || 'Failed to refresh status.';
+      if (state.polling) {
+        setFeedback('error', message);
+        setQuizFeatureState(false, { silent: true });
+        stopPolling();
+      } else {
+        setFeedback('error', message);
+      }
+    })
+    .finally(() => {
+      realtimeRefreshInFlight = false;
+      if (realtimeRefreshQueued) {
+        realtimeRefreshQueued = false;
+        requestRealtimeSheetRefresh();
+      }
+    });
+}
+
+function startFallbackRefreshLoop() {
+  if (fallbackRefreshTimer) {
+    return;
+  }
+
+  if (!realtimeSupportWarned) {
+    console.warn(
+      'Realtime status listener is unavailable; falling back to timed refresh every 1.5s.'
+    );
+    realtimeSupportWarned = true;
+  }
+
+  fallbackRefreshTimer = setInterval(() => {
+    if (!state.polling) {
+      stopFallbackRefreshLoop();
+      return;
+    }
+
+    requestRealtimeSheetRefresh();
+  }, FALLBACK_REFRESH_INTERVAL_MS);
+}
+
+function stopFallbackRefreshLoop() {
+  if (fallbackRefreshTimer) {
+    clearInterval(fallbackRefreshTimer);
+    fallbackRefreshTimer = null;
   }
 }
 
@@ -696,27 +830,19 @@ function startPolling() {
     return;
   }
   togglePolling(true);
-  state.pollHandle = setInterval(() => {
-    fetchSheetValues().catch((error) => {
-      console.error('Failed to poll sheet:', error);
-      setFeedback('error', error.message);
-      stopPolling();
-    });
-  }, POLL_INTERVAL_MS);
-
-  fetchSheetValues().catch((error) => {
-    console.error('Failed to fetch sheet:', error);
-    setFeedback('error', error.message);
-    setQuizFeatureState(false, { silent: true });
-    stopPolling();
-  });
+  const hasRealtime = attachRealtimeStatusListener();
+  if (hasRealtime) {
+    stopFallbackRefreshLoop();
+  } else {
+    startFallbackRefreshLoop();
+  }
+  requestRealtimeSheetRefresh();
 }
 
 function stopPolling() {
-  if (state.pollHandle) {
-    clearInterval(state.pollHandle);
-    state.pollHandle = null;
-  }
+  detachRealtimeStatusListener();
+  stopFallbackRefreshLoop();
+  realtimeRefreshQueued = false;
   togglePolling(false);
 }
 
@@ -916,10 +1042,3 @@ if (typeof window !== 'undefined') {
     });
   };
 }
-
-
-
-
-
-
-
