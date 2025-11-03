@@ -284,31 +284,36 @@ async function loadAllLogs(botName) {
   renderLogList(data);
 }
 
-// ?? Theo dõi realtime captchas
 function subscribeToCaptcha(botName) {
   if (captchaChannel) supabase.removeChannel(captchaChannel);
-
-  lastKnownStatusByBot.delete(botName);
 
   captchaChannel = supabase
     .channel(`realtime-captcha-${botName}`)
     .on(
       "postgres_changes",
       {
-        event: "UPDATE",
+        event: "*", // 👈 nhận cả INSERT, UPDATE, DELETE
         schema: "public",
         table: "captchas",
         filter: `name=eq.${botName}`,
       },
       (payload) => {
         const updated = payload?.new || null;
-        const base64 = updated?.image_base64;
-        console.log("??? Captcha updated:", base64?.slice(0, 30) + "...");
+        console.log("⚡ Captcha realtime update:", updated);
+
+        // 🧠 Truyền payload đầy đủ sang front
         handleCaptchaUpdate(updated, { silent: true, botName });
+
+        // 🧩 Gửi thêm sự kiện global cho dashboard
+        if (typeof window.addCaptchaStatusListener === "function") {
+          window.dispatchEvent(
+            new CustomEvent("supabase-captcha-update", { detail: updated })
+          );
+        }
       }
     )
     .subscribe(async (status) => {
-      console.log(`?? Captcha channel ${botName}:`, status);
+      console.log(`✅ Captcha channel ${botName}:`, status);
       if (status === "SUBSCRIBED") {
         await loadLatestCaptcha(botName);
       }
@@ -342,6 +347,24 @@ function subscribeToLogs(botName) {
       }
     });
 }
+
+window.addEventListener("supabase-captcha-update", (event) => {
+  const detail = event.detail || {};
+  const botName = detail.name;
+  const base64Value = detail.image_base64 ?? null;
+
+  if (window.currentBot && botName === window.currentBot) {
+    console.log("🪄 Realtime image update for current bot:", base64Value);
+    if (typeof window.updateCaptchaDisplay === "function") {
+      window.updateCaptchaDisplay(base64Value);
+    }
+
+    if ("quiz" in detail && typeof window.setDashboardQuizFeatureState === "function") {
+      const enable = Boolean(detail.quiz);
+      window.setDashboardQuizFeatureState(enable, { silent: !enable });
+    }
+  }
+});
 
 if (typeof window !== "undefined") {
   window.subscribeToCaptcha = subscribeToCaptcha;
