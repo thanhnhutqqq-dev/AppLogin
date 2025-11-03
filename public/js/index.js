@@ -774,21 +774,28 @@ function handleRealtimeStatusDetail(detail) {
 }
 
 function attachRealtimeStatusListener() {
+  // Nếu đã có listener thì không gắn lại nữa
   if (realtimeStatusUnsubscribe) {
     return true;
   }
 
+  // Nếu không có hỗ trợ realtime → fallback
   if (!hasRealtimeStatusSupport()) {
     return false;
   }
 
+  // Đăng ký listener realtime
   realtimeStatusUnsubscribe = window.addCaptchaStatusListener((detail) => {
     handleRealtimeStatusDetail(detail);
   });
 
+  // Kiểm tra đã attach thành công chưa
   const attached = typeof realtimeStatusUnsubscribe === 'function';
+
+  // ✅ Nếu attach thành công → tắt vòng fallback refresh (đỡ bị ghi đè ảnh)
   if (attached && state.polling) {
     stopFallbackRefreshLoop();
+    console.log('🟢 Supabase realtime active — fallback polling stopped');
   }
 
   return attached;
