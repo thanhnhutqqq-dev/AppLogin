@@ -6,9 +6,15 @@ const SUPABASE_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNveHBydnN4Ymxzem52c2x4dWhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE4MDg3MTcsImV4cCI6MjA3NzM4NDcxN30.v9tR-dlYmr97A7nibCL-3sEHIkXvU_Pn7MMLqDx74q8";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-if (typeof window !== "undefined") {
-  window.__supabaseLogsActive = true;
+
+function setRealtimeActive(active) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.__supabaseLogsActive = Boolean(active);
 }
+
+setRealtimeActive(false);
 
 // ?? DOM elements
 const sheetSelector = document.getElementById("sheetSelector");
@@ -262,6 +268,7 @@ async function loadLatestCaptcha(botName) {
   if (error) {
     console.error("? Error loading captcha:", error.message);
     handleCaptchaUpdate(null, { silent: true, botName });
+    setRealtimeActive(false);
     return;
   }
 
@@ -286,6 +293,8 @@ async function loadAllLogs(botName) {
 
 function subscribeToCaptcha(botName) {
   if (captchaChannel) supabase.removeChannel(captchaChannel);
+  showCaptcha(null);
+  setRealtimeActive(false);
 
   captchaChannel = supabase
     .channel(`realtime-captcha-${botName}`)
@@ -315,7 +324,11 @@ function subscribeToCaptcha(botName) {
     .subscribe(async (status) => {
       console.log(`✅ Captcha channel ${botName}:`, status);
       if (status === "SUBSCRIBED") {
+        setRealtimeActive(true);
         await loadLatestCaptcha(botName);
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        showCaptcha(null);
+        setRealtimeActive(false);
       }
     });
 }
