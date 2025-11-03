@@ -713,10 +713,20 @@ async function fetchSheetValues() {
     const data = await api.getSheetState(state.sheetName);
     const values = data.values || data.state?.values || [];
     state.values = values;
-    renderCaptcha(values);
+
+    // ✅ Nếu đang dùng realtime (Supabase) thì KHÔNG render ảnh lại
+    const supabaseActive =
+      typeof window !== 'undefined' && window.__supabaseLogsActive === true;
+    if (!supabaseActive) {
+      renderCaptcha(values);
+    } else {
+      console.log('⚡ Supabase realtime active — skip renderCaptcha()');
+    }
+
     renderLogs(values);
     renderTable(values);
     handleRunState(values);
+
     if (Object.prototype.hasOwnProperty.call(data, 'quizEnabled')) {
       const enableSilent = !data.quizEnabled;
       setQuizFeatureState(data.quizEnabled, { silent: enableSilent });
