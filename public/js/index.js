@@ -182,12 +182,12 @@ function refreshRunButtonState() {
   // Mặc định: luôn khóa nút
   let shouldDisable = true;
 
-  // Nếu đang chạy hoặc đang chờ, nút phải bị khóa
+  // Nếu đang chạy hoặc đang chềE nút phải bềEkhóa
   if (state.running || normalized === 'IN-PROGRESS' || normalized === 'PENDING') {
     shouldDisable = true;
   }
 
-  // Nếu trạng thái là DONE hoặc ERROR → được click lại
+  // Nếu trạng thái là DONE hoặc ERROR ↁEđược click lại
   if (!state.running && (normalized === 'DONE' || normalized === 'ERROR')) {
     shouldDisable = false;
   }
@@ -195,17 +195,17 @@ function refreshRunButtonState() {
   // Cập nhật trạng thái disable cho nút
   runButton.disabled = shouldDisable;
 
-  // Thêm lớp "is-locked" để hiển thị hiệu ứng (nếu có CSS)
+  // Thêm lớp "is-locked" đềEhiển thềEhiệu ứng (nếu có CSS)
   runButton.classList.toggle('is-locked', shouldDisable);
 
   // Cập nhật tooltip (title)
   if (shouldDisable) {
     if (normalized === 'IN-PROGRESS') {
-      runButton.title = 'Đang chạy — vui lòng đợi.';
+      runButton.title = 'Đang chạy  Evui lòng đợi.';
     } else if (normalized === 'PENDING') {
-      runButton.title = 'Đang chờ xử lý — vui lòng đợi.';
+      runButton.title = 'Đang chềExử lý  Evui lòng đợi.';
     } else {
-      runButton.title = 'RUN LOGIN bị khóa — chỉ bật khi trạng thái là DONE hoặc ERROR.';
+      runButton.title = 'RUN LOGIN bềEkhóa  EchềEbật khi trạng thái là DONE hoặc ERROR.';
     }
   } else {
     runButton.removeAttribute('title');
@@ -359,8 +359,7 @@ function renderSheetOptions(options) {
   setSheetName('');
   sheetSelector.value = '';
 
-  // ?? Tr?ng thái hi?n th? v?n là “IDLE”
-  updateStatusBadge('IDLE', 'gray');
+  // ?? Tr?ng thái hi?n th? v?n là “IDLE E  updateStatusBadge('IDLE', 'gray');
   sheetSelector.disabled = false;
 }
 
@@ -502,42 +501,182 @@ function resolveImageSource(raw) {
   }
 }
 
-function updateCaptchaDisplay(rawImage) {
-  const trimmed = (rawImage ?? "").toString().trim();
+let lastCaptchaSignature = null;
 
-  // 🧹 Trường hợp rỗng, null, undefined, hoặc chuỗi 'null'
-  if (!trimmed || trimmed.toLowerCase() === "null" || trimmed.toLowerCase() === "undefined") {
-    captchaContainer.innerHTML = "";
-    captchaContainer.classList.remove("has-image");
-    captchaContainer.classList.add("empty");
+function bytesToBase64(bytes) {
+  if (!bytes || !bytes.length) {
+    return '';
+  }
 
-    const span = document.createElement("span");
-    span.textContent = "No image available.";
-    captchaContainer.appendChild(span);
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk);
+  }
 
-    console.log("🧹 Cleared captcha image (image_base64 = null or empty)");
+  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+    return window.btoa(binary);
+  }
+
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(bytes).toString('base64');
+  }
+
+  console.warn('Base64 encoding is not supported in this environment.');
+  return '';
+}
+
+function detectMimeFromBytes(bytes) {
+  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return 'image/png';
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    return 'image/jpeg';
+  }
+  if (bytes.length >= 3 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+    return 'image/gif';
+  }
+  return 'image/png';
+}
+
+function normaliseCaptchaRawValue(raw) {
+  if (raw === null || raw === undefined) {
+    return null;
+  }
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const lowered = trimmed.toLowerCase();
+    if (lowered === 'null' || lowered === 'undefined') {
+      return null;
+    }
+    return trimmed;
+  }
+
+  if (Array.isArray(raw) && raw.every((value) => typeof value === 'number')) {
+    return normaliseCaptchaRawValue(Uint8Array.from(raw));
+  }
+
+  if (ArrayBuffer.isView(raw)) {
+    const view = raw instanceof Uint8Array
+      ? raw
+      : new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+
+    try {
+      const base64 = bytesToBase64(view);
+      if (!base64) {
+        return null;
+      }
+      const mime = detectMimeFromBytes(view);
+      return `data:${mime};base64,${base64}`;
+    } catch (error) {
+      console.warn('Failed to normalise captcha bytes', error);
+      return null;
+    }
+  }
+
+  if (raw instanceof ArrayBuffer) {
+    return normaliseCaptchaRawValue(new Uint8Array(raw));
+  }
+
+  if (typeof raw === 'object') {
+    if (Object.prototype.hasOwnProperty.call(raw, 'image_base64')) {
+      return normaliseCaptchaRawValue(raw.image_base64);
+    }
+
+    if (raw.type === 'Buffer' && Array.isArray(raw.data)) {
+      return normaliseCaptchaRawValue(Uint8Array.from(raw.data));
+    }
+
+    if (Array.isArray(raw.data) && raw.data.every((value) => typeof value === 'number')) {
+      return normaliseCaptchaRawValue(Uint8Array.from(raw.data));
+    }
+  }
+
+  const stringified = String(raw).trim();
+  if (!stringified) {
+    return null;
+  }
+  const lowered = stringified.toLowerCase();
+  if (lowered === 'null' || lowered === 'undefined') {
+    return null;
+  }
+  return stringified;
+}
+
+function clearCaptchaDisplay({ log = true } = {}) {
+  if (!captchaContainer) {
     return;
   }
 
-  // ✅ Có dữ liệu ảnh (base64 hoặc URL)
-  const source = resolveImageSource(trimmed);
-  captchaContainer.innerHTML = "";
-  captchaContainer.classList.remove("empty");
-  captchaContainer.classList.add("has-image");
-
-  if (source) {
-    const img = document.createElement("img");
-    img.src = source;
-    img.alt = "Captcha preview";
-    captchaContainer.appendChild(img);
-  } else {
-    const span = document.createElement("span");
-    span.textContent = "No image available.";
-    captchaContainer.classList.add("empty");
-    captchaContainer.appendChild(span);
+  if (captchaContainer.classList.contains('empty') && lastCaptchaSignature === null) {
+    return;
   }
+
+  captchaContainer.innerHTML = '';
+  captchaContainer.classList.remove('has-image');
+  captchaContainer.classList.add('empty');
+
+  const span = document.createElement('span');
+  span.textContent = 'No image available.';
+  captchaContainer.appendChild(span);
+
+  if (log) {
+    console.log('?? Cleared captcha image (image_base64 = null or empty)');
+  }
+
+  lastCaptchaSignature = null;
 }
 
+function updateCaptchaDisplay(rawImage) {
+  if (!captchaContainer) {
+    return;
+  }
+
+  const normalised = normaliseCaptchaRawValue(rawImage);
+  if (!normalised) {
+    clearCaptchaDisplay({ log: lastCaptchaSignature !== null });
+    return;
+  }
+
+  const source = resolveImageSource(normalised);
+  if (!source) {
+    clearCaptchaDisplay({ log: lastCaptchaSignature !== null });
+    return;
+  }
+
+  if (source === lastCaptchaSignature && captchaContainer.classList.contains('has-image')) {
+    return;
+  }
+
+  lastCaptchaSignature = source;
+  captchaContainer.innerHTML = '';
+  captchaContainer.classList.remove('empty');
+  captchaContainer.classList.add('has-image');
+
+  const img = document.createElement('img');
+  img.src = source;
+  img.alt = 'Captcha preview';
+  img.decoding = 'async';
+  img.addEventListener(
+    'error',
+    () => {
+      console.warn('Captcha image failed to load, clearing display');
+      clearCaptchaDisplay({ log: false });
+    },
+    { once: true }
+  );
+
+  captchaContainer.appendChild(img);
+}
+
+if (typeof window !== 'undefined') {
+  window.updateCaptchaDisplay = updateCaptchaDisplay;
+}
 function renderCaptcha(values) {
   if (!Array.isArray(values)) {
     updateCaptchaDisplay(values);
@@ -672,22 +811,22 @@ function handleRunState(values) {
 
   refreshRunButtonState();
   updateActionButtons();
-  // ✅ Thêm đoạn reload ảnh khi trạng thái là DONE hoặc ERROR
+  // ✁EThêm đoạn reload ảnh khi trạng thái là DONE hoặc ERROR
   if (
   statusChanged &&
   (normalizedStatus === 'DONE' || normalizedStatus === 'ERROR')
 ) {
-  // 🔍 Chỉ reload thủ công nếu Supabase realtime KHÔNG active
+  // 🔍 ChềEreload thủ công nếu Supabase realtime KHÔNG active
   const supabaseLogsActive =
     typeof window !== 'undefined' && window.__supabaseLogsActive;
 
   if (!supabaseLogsActive) {
-    console.log('🟢 No realtime detected — fetching sheet manually...');
+    console.log('🟢 No realtime detected  Efetching sheet manually...');
     fetchSheetValues().catch((err) =>
       console.error('Failed to reload image after status change:', err)
     );
   } else {
-    console.log('⚡ Supabase realtime active — skip sheet reload.');
+    console.log('⚡ Supabase realtime active  Eskip sheet reload.');
   }
 }
 }
@@ -714,13 +853,9 @@ async function fetchSheetValues() {
     const values = data.values || data.state?.values || [];
     state.values = values;
 
-    // ✅ Nếu đang dùng realtime (Supabase) thì KHÔNG render ảnh lại
-    const supabaseActive =
-      typeof window !== 'undefined' && window.__supabaseLogsActive === true;
-    if (!supabaseActive) {
-      renderCaptcha(values);
-    } else {
-      console.log('⚡ Supabase realtime active — skip renderCaptcha()');
+    // ✁ENếu đang dùng realtime (Supabase) thì KHÔNG render ảnh lại
+    if (typeof window === 'undefined' || window.__supabaseLogsActive !== true) {
+      console.log('[captcha] Realtime feed inactive; waiting for Supabase before rendering image.');
     }
 
     renderLogs(values);
@@ -789,7 +924,7 @@ function attachRealtimeStatusListener() {
     return true;
   }
 
-  // Nếu không có hỗ trợ realtime → fallback
+  // Nếu không có hềEtrợ realtime ↁEfallback
   if (!hasRealtimeStatusSupport()) {
     return false;
   }
@@ -802,10 +937,10 @@ function attachRealtimeStatusListener() {
   // Kiểm tra đã attach thành công chưa
   const attached = typeof realtimeStatusUnsubscribe === 'function';
 
-  // ✅ Nếu attach thành công → tắt vòng fallback refresh (đỡ bị ghi đè ảnh)
+  // ✁ENếu attach thành công ↁEtắt vòng fallback refresh (đỡ bềEghi đè ảnh)
   if (attached && state.polling) {
     stopFallbackRefreshLoop();
-    console.log('🟢 Supabase realtime active — fallback polling stopped');
+    console.log('🟢 Supabase realtime active  Efallback polling stopped');
   }
 
   return attached;
