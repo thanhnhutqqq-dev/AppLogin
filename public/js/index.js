@@ -503,28 +503,37 @@ function resolveImageSource(raw) {
 }
 
 function updateCaptchaDisplay(rawImage) {
-  const source = resolveImageSource(rawImage);
-  if (!source) {
-    const currentImg = captchaContainer.querySelector("img");
-    if (currentImg) {
-      console.log("🟡 No new image from sheet — keep existing captcha.");
-      return;
-    }
+  const trimmed = (rawImage ?? "").toString().trim();
+
+  // 🧹 Trường hợp rỗng, null, undefined, hoặc chuỗi 'null'
+  if (!trimmed || trimmed.toLowerCase() === "null" || trimmed.toLowerCase() === "undefined") {
+    captchaContainer.innerHTML = "";
+    captchaContainer.classList.remove("has-image");
+    captchaContainer.classList.add("empty");
+
+    const span = document.createElement("span");
+    span.textContent = "No image available.";
+    captchaContainer.appendChild(span);
+
+    console.log("🧹 Cleared captcha image (image_base64 = null or empty)");
+    return;
   }
-  captchaContainer.innerHTML = '';
-  captchaContainer.classList.remove('has-image', 'empty');
-  captchaContainer.style.removeProperty('width');
-  captchaContainer.style.removeProperty('height');
+
+  // ✅ Có dữ liệu ảnh (base64 hoặc URL)
+  const source = resolveImageSource(trimmed);
+  captchaContainer.innerHTML = "";
+  captchaContainer.classList.remove("empty");
+  captchaContainer.classList.add("has-image");
+
   if (source) {
-    const img = document.createElement('img');
+    const img = document.createElement("img");
     img.src = source;
-    img.alt = 'Captcha preview';
-    captchaContainer.classList.add('has-image');
+    img.alt = "Captcha preview";
     captchaContainer.appendChild(img);
   } else {
-    const span = document.createElement('span');
-    span.textContent = 'No image available.';
-    captchaContainer.classList.add('empty');
+    const span = document.createElement("span");
+    span.textContent = "No image available.";
+    captchaContainer.classList.add("empty");
     captchaContainer.appendChild(span);
   }
 }
