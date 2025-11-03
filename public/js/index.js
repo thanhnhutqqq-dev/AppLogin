@@ -656,6 +656,12 @@ function handleRunState(values) {
 
   refreshRunButtonState();
   updateActionButtons();
+  // ✅ Thêm đoạn reload ảnh khi trạng thái là DONE hoặc ERROR
+  if (statusChanged && (normalizedStatus === 'DONE' || normalizedStatus === 'ERROR')) {
+    fetchSheetValues().catch(err =>
+      console.error('Failed to reload image after status change:', err)
+    );
+  }
 }
 async function fetchSheetValues() {
   if (!state.sheetName) {
