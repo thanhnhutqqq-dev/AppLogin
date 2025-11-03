@@ -657,11 +657,23 @@ function handleRunState(values) {
   refreshRunButtonState();
   updateActionButtons();
   // ✅ Thêm đoạn reload ảnh khi trạng thái là DONE hoặc ERROR
-  if (statusChanged && (normalizedStatus === 'DONE' || normalizedStatus === 'ERROR')) {
-    fetchSheetValues().catch(err =>
+  if (
+  statusChanged &&
+  (normalizedStatus === 'DONE' || normalizedStatus === 'ERROR')
+) {
+  // 🔍 Chỉ reload thủ công nếu Supabase realtime KHÔNG active
+  const supabaseLogsActive =
+    typeof window !== 'undefined' && window.__supabaseLogsActive;
+
+  if (!supabaseLogsActive) {
+    console.log('🟢 No realtime detected — fetching sheet manually...');
+    fetchSheetValues().catch((err) =>
       console.error('Failed to reload image after status change:', err)
     );
+  } else {
+    console.log('⚡ Supabase realtime active — skip sheet reload.');
   }
+}
 }
 async function fetchSheetValues() {
   if (!state.sheetName) {
