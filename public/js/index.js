@@ -504,6 +504,13 @@ function resolveImageSource(raw) {
 
 function updateCaptchaDisplay(rawImage) {
   const source = resolveImageSource(rawImage);
+  if (!source) {
+    const currentImg = captchaContainer.querySelector("img");
+    if (currentImg) {
+      console.log("🟡 No new image from sheet — keep existing captcha.");
+      return;
+    }
+  }
   captchaContainer.innerHTML = '';
   captchaContainer.classList.remove('has-image', 'empty');
   captchaContainer.style.removeProperty('width');
