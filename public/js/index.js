@@ -31,6 +31,12 @@ const loadingBadge = document.getElementById('loadingBadge');
 const rootElement = document.documentElement;
 const appBody = document.body;
 const api = window.dashboardApi || null;
+const pcControlModal = document.getElementById('pcControlModal');
+const pcControlContent = document.getElementById('pcControlContent');
+const pcControlCloseButton = document.getElementById('pcControlClose');
+const pcControlOnButton = document.getElementById('pcControlOn');
+const pcControlOffButton = document.getElementById('pcControlOff');
+const pcLogListContainer = document.getElementById('pcLogList');
 let baseViewportHeight =
   Math.max(window.innerHeight || 0, window.visualViewport ? window.visualViewport.height : 0) || 0;
 let keyboardActive = false;
@@ -41,6 +47,256 @@ let realtimeRefreshQueued = false;
 let realtimeSupportWarned = false;
 let fallbackRefreshTimer = null;
 const FALLBACK_REFRESH_INTERVAL_MS = 1500;
+let pcControlState = 'OFF';
+let pcControlLoading = false;
+let pcLogEntries = [];
+const PC_CONTROL_ALLOWED_USER = 'phamthanhnhut';
+
+function isPcControlAllowedBot(botName) {
+  if (!botName) {
+    return false;
+  }
+  return botName === PC_CONTROL_ALLOWED_USER;
+}
+
+function isPcControlAllowed() {
+  return isPcControlAllowedBot(state.sheetName);
+}
+
+function normalizePcControlValue(value) {
+  if (!value && value !== 0) {
+    return '';
+  }
+  const upper = String(value).trim().toUpperCase();
+  if (upper === 'ON' || upper === 'OFF') {
+    return upper;
+  }
+  return '';
+}
+
+function setPcControlLoadingState(isLoading) {
+  pcControlLoading = Boolean(isLoading);
+  if (pcControlContent) {
+    if (pcControlLoading) {
+      pcControlContent.setAttribute('data-loading', 'true');
+    } else {
+      pcControlContent.removeAttribute('data-loading');
+    }
+  }
+  applyPcControlState(pcControlState);
+}
+
+function applyPcControlState(nextState) {
+  const normalized = normalizePcControlValue(nextState) || 'OFF';
+  pcControlState = normalized;
+
+  if (pcControlContent) {
+    pcControlContent.dataset.state = normalized;
+  }
+
+  if (pcControlOnButton) {
+    const pressed = normalized === 'ON';
+    pcControlOnButton.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+  }
+
+  if (pcControlOffButton) {
+    const pressed = normalized === 'OFF';
+    pcControlOffButton.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+  }
+}
+
+function formatPcLogTimestamp(timestamp) {
+  if (!timestamp) {
+    return '';
+  }
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  return parsed.toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function renderPcLogs(logs) {
+  if (!pcLogListContainer) {
+    return;
+  }
+
+  const container = pcLogListContainer;
+  container.innerHTML = '';
+
+  const items = Array.isArray(logs) ? logs.slice(0, 5) : [];
+
+  if (!items.length) {
+    const placeholder = document.createElement('p');
+    placeholder.className = 'pc-control-log-placeholder';
+    placeholder.textContent = 'No PC logs yet.';
+    container.appendChild(placeholder);
+    pcLogEntries = [];
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  items.forEach((entry) => {
+    if (!entry) {
+      return;
+    }
+    let message = '';
+    const messageRaw =
+      entry && Object.prototype.hasOwnProperty.call(entry, 'message')
+        ? String(entry.message ?? '')
+        : '';
+    const errorRaw =
+      entry && Object.prototype.hasOwnProperty.call(entry, 'error')
+        ? String(entry.error ?? '')
+        : '';
+    message = messageRaw.trim();
+    const errorText = errorRaw.trim();
+    if (!message && errorText) {
+      message = errorText;
+    }
+    const level =
+      typeof entry.level === 'string' ? entry.level.trim() : '';
+    const stateValue =
+      typeof entry.state === 'string' ? entry.state.trim() : '';
+    const actionValue =
+      typeof entry.action === 'string' ? entry.action.trim() : '';
+    const timestamp =
+      entry.created_at ||
+      entry.createdAt ||
+      entry.inserted_at ||
+      entry.insertedAt ||
+      '';
+
+    const itemEl = document.createElement('div');
+    itemEl.className = 'pc-control-log-item';
+
+    const timeText = formatPcLogTimestamp(timestamp);
+    if (timeText) {
+      const timeEl = document.createElement('span');
+      timeEl.className = 'pc-control-log-timestamp';
+      timeEl.textContent = timeText;
+      itemEl.appendChild(timeEl);
+    }
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'pc-control-log-message';
+    messageEl.textContent = message || '(No message)';
+    itemEl.appendChild(messageEl);
+
+    if (errorText && errorText !== message) {
+      const errorEl = document.createElement('div');
+      errorEl.className = 'pc-control-log-error';
+      errorEl.textContent = errorText;
+      itemEl.appendChild(errorEl);
+    }
+
+    fragment.appendChild(itemEl);
+  });
+
+  container.appendChild(fragment);
+  pcLogEntries = items;
+}
+
+function openPcControlModal() {
+  if (!pcControlModal) {
+    return;
+  }
+  if (!isPcControlAllowed()) {
+    setFeedback('error', 'PC Control is only available for user "phamthanhnhut".');
+    return;
+  }
+  if (typeof window.requestPcLogsRefresh === 'function') {
+    window
+      .requestPcLogsRefresh(state.sheetName)
+      .catch((error) => console.error('Failed to refresh PC logs:', error));
+  }
+  if (pcLogEntries && pcLogEntries.length) {
+    renderPcLogs(pcLogEntries);
+  }
+  pcControlModal.classList.remove('hidden');
+}
+
+function closePcControlModal() {
+  if (!pcControlModal) {
+    return;
+  }
+  pcControlModal.classList.add('hidden');
+}
+
+function isPcControlModalOpen() {
+  return Boolean(
+    pcControlModal && !pcControlModal.classList.contains('hidden')
+  );
+}
+
+async function handlePcControlButtonClick(targetValue) {
+  if (!isPcControlAllowed()) {
+    setFeedback('error', 'PC Control is only available for user "phamthanhnhut".');
+    return;
+  }
+  const desired = normalizePcControlValue(targetValue);
+  if (!desired) {
+    return;
+  }
+
+  if (!window.currentBot) {
+    setFeedback('error', 'Select a bot before toggling PC Control.');
+    return;
+  }
+
+  if (pcControlLoading || desired === pcControlState) {
+    return;
+  }
+
+  if (typeof window.updatePcControlValue !== 'function') {
+    console.warn('Supabase PC control updater is unavailable.');
+    return;
+  }
+
+  try {
+    setPcControlLoadingState(true);
+    await window.updatePcControlValue(window.currentBot, desired);
+    applyPcControlState(desired);
+  } catch (error) {
+    console.error('Failed to update PC control:', error);
+    const message =
+      (error && error.message) || 'Failed to update PC control.';
+    setFeedback('error', message);
+  } finally {
+    setPcControlLoadingState(false);
+  }
+}
+
+applyPcControlState(pcControlState);
+renderPcLogs(pcLogEntries);
+
+if (typeof window !== 'undefined') {
+  window.setPcControlState = (value) => {
+    applyPcControlState(value);
+    setPcControlLoadingState(false);
+  };
+
+  window.setPcLogs = (logs) => {
+    renderPcLogs(logs);
+  };
+
+  if (Object.prototype.hasOwnProperty.call(window, '__pendingPcControlState')) {
+    window.setPcControlState(window.__pendingPcControlState);
+    delete window.__pendingPcControlState;
+  }
+
+  if (Array.isArray(window.__pendingPcLogs)) {
+    window.setPcLogs(window.__pendingPcLogs);
+    delete window.__pendingPcLogs;
+  }
+}
 
 if (typeof window !== 'undefined') {
   window.onCaptchaStatusSupportReady = () => {
@@ -741,11 +997,25 @@ async function fetchSheetValues() {
       latestLogEl.textContent = data.latestLog;
     }
 
-    const activeBot = window.currentBot || "";
-    if (state.sheetName && state.sheetName !== activeBot) {
-      window.currentBot = state.sheetName;
+    const activeBot = window.currentBot || '';
+    const nextBot = state.sheetName || '';
+    if (nextBot && nextBot !== activeBot) {
+      window.currentBot = nextBot;
       subscribeToCaptcha(window.currentBot);
       subscribeToLogs(window.currentBot);
+    }
+
+    const allowPcControl = isPcControlAllowedBot(nextBot);
+    if (typeof window.subscribeToPcControl === 'function') {
+      window.subscribeToPcControl(allowPcControl ? nextBot : null);
+    }
+    if (typeof window.subscribeToPcLogs === 'function') {
+      window.subscribeToPcLogs(allowPcControl ? nextBot : null);
+    }
+    if (!allowPcControl) {
+      renderPcLogs([]);
+      applyPcControlState('OFF');
+      closePcControlModal();
     }
 
     attachRealtimeStatusListener();
@@ -992,6 +1262,47 @@ async function handleStopPollingClick() {
     setFeedback('error', error.message || 'Failed to stop run.');
   }
 }
+
+if (statusPanel) {
+  statusPanel.addEventListener('click', () => {
+    openPcControlModal();
+  });
+}
+
+if (pcControlCloseButton) {
+  pcControlCloseButton.addEventListener('click', () => {
+    closePcControlModal();
+  });
+}
+
+if (pcControlModal) {
+  pcControlModal.addEventListener('click', (event) => {
+    if (event.target === pcControlModal) {
+      closePcControlModal();
+    }
+  });
+}
+
+if (pcControlOnButton) {
+  pcControlOnButton.addEventListener('click', () => {
+    handlePcControlButtonClick('ON');
+  });
+}
+
+if (pcControlOffButton) {
+  pcControlOffButton.addEventListener('click', () => {
+    handlePcControlButtonClick('OFF');
+  });
+}
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    if (isPcControlModalOpen()) {
+      closePcControlModal();
+      return;
+    }
+  }
+});
 
 runButton.addEventListener('click', handleRunClick);
 submitButton.addEventListener('click', handleSubmitClick);
