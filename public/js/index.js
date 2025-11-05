@@ -51,6 +51,7 @@ let pcControlState = 'OFF';
 let pcControlLoading = false;
 let pcLogEntries = [];
 const PC_CONTROL_ALLOWED_USER = 'phamthanhnhut';
+let pcControlActionInFlight = false;
 
 function isPcControlAllowedBot(botName) {
   if (!botName) {
@@ -76,12 +77,19 @@ function normalizePcControlValue(value) {
 
 function setPcControlLoadingState(isLoading) {
   pcControlLoading = Boolean(isLoading);
+  pcControlActionInFlight = pcControlLoading;
   if (pcControlContent) {
     if (pcControlLoading) {
       pcControlContent.setAttribute('data-loading', 'true');
     } else {
       pcControlContent.removeAttribute('data-loading');
     }
+  }
+  if (pcControlOnButton) {
+    pcControlOnButton.disabled = pcControlLoading;
+  }
+  if (pcControlOffButton) {
+    pcControlOffButton.disabled = pcControlLoading;
   }
   applyPcControlState(pcControlState);
 }
@@ -161,12 +169,6 @@ function renderPcLogs(logs) {
     if (!message && errorText) {
       message = errorText;
     }
-    const level =
-      typeof entry.level === 'string' ? entry.level.trim() : '';
-    const stateValue =
-      typeof entry.state === 'string' ? entry.state.trim() : '';
-    const actionValue =
-      typeof entry.action === 'string' ? entry.action.trim() : '';
     const timestamp =
       entry.created_at ||
       entry.createdAt ||
@@ -251,7 +253,12 @@ async function handlePcControlButtonClick(targetValue) {
     return;
   }
 
-  if (pcControlLoading || desired === pcControlState) {
+  if (pcControlActionInFlight) {
+    setFeedback('info', 'PC Control update in progress. Please wait.');
+    return;
+  }
+
+  if (desired === pcControlState) {
     return;
   }
 
@@ -266,8 +273,10 @@ async function handlePcControlButtonClick(targetValue) {
     applyPcControlState(desired);
   } catch (error) {
     console.error('Failed to update PC control:', error);
-    const message =
-      (error && error.message) || 'Failed to update PC control.';
+    const rootMessage = error && error.message ? String(error.message) : null;
+    const message = rootMessage
+      ? `PC Control update failed: ${rootMessage}`
+      : 'PC Control update failed.';
     setFeedback('error', message);
   } finally {
     setPcControlLoadingState(false);
@@ -281,6 +290,7 @@ if (typeof window !== 'undefined') {
   window.setPcControlState = (value) => {
     applyPcControlState(value);
     setPcControlLoadingState(false);
+    pcControlActionInFlight = false;
   };
 
   window.setPcLogs = (logs) => {
