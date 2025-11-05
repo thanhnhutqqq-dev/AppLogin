@@ -757,6 +757,7 @@ window.addEventListener("supabase-captcha-update", (event) => {
 });
 
 if (typeof window !== "undefined") {
+  window.supabaseClient = supabase;
   window.subscribeToCaptcha = subscribeToCaptcha;
   window.subscribeToLogs = subscribeToLogs;
   window.subscribeToPcControl = subscribeToPcControl;

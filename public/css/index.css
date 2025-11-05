@@ -110,6 +110,17 @@ h1 {
   font-size: clamp(2rem, 4vw, 2.6rem);
 }
 
+#statusPanel h1[role="button"] {
+  cursor: pointer;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+#statusPanel h1[role="button"]:hover,
+#statusPanel h1[role="button"]:focus-visible {
+  color: var(--accent-strong);
+  text-shadow: 0 0 12px rgba(34, 211, 238, 0.4);
+}
+
 h2 {
   font-size: clamp(1.1rem, 3vw, 1.4rem);
 }
@@ -488,6 +499,108 @@ button.primary.hidden {
 
 .log-item:last-child {
   border-bottom: none;
+}
+
+.pc-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1rem, 4vw, 2rem);
+  background: rgba(2, 6, 23, 0.82);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+}
+
+.pc-modal__dialog {
+  width: min(420px, 100%);
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 16px;
+  padding: clamp(1.2rem, 3.2vw, 1.6rem);
+  box-shadow:
+    0 32px 72px -36px rgba(2, 6, 23, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.pc-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pc-modal__header h2 {
+  font-size: clamp(1.2rem, 3vw, 1.4rem);
+  letter-spacing: 0.1em;
+}
+
+.pc-modal__close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.8rem;
+  line-height: 1;
+  padding: 0.1rem 0.45rem;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.pc-modal__close:hover,
+.pc-modal__close:focus-visible {
+  color: var(--accent-strong);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.pc-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.pc-modal__status {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.6);
+  padding: 1rem;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+}
+
+.pc-modal__buttons {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pc-modal__buttons button {
+  flex: 1 1 calc(33% - 0.5rem);
+  min-width: 96px;
+}
+
+.pc-button-off {
+  border-color: rgba(244, 63, 94, 0.4);
+  background: linear-gradient(120deg, rgba(127, 29, 29, 0.6), rgba(185, 28, 28, 0.45));
+  color: rgba(248, 250, 252, 0.9);
+}
+
+.pc-button-off:hover:not(:disabled),
+.pc-button-off:focus-visible:not(:disabled) {
+  border-color: rgba(244, 63, 94, 0.8);
+  color: #fef2f2;
+  box-shadow: 0 22px 48px -28px rgba(244, 63, 94, 0.5);
+  transform: translateY(-1px);
 }
 
 @media (max-width: 768px) {

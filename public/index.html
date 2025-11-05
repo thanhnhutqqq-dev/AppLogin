@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -13,7 +13,7 @@
   <main>
     <section id="statusPanel" class="panel panel-status status-gray">
       <header>
-        <h1>Auto Login</h1>
+        <h1 id="autoLoginHeader" role="button" tabindex="0">Auto Login</h1>
         <div class="header-actions">
           <span id="pollingBadge" class="status-badge gray hidden">Idle</span>
         </div>
@@ -79,6 +79,7 @@
     </section>
   </main>
 
+<<<<<<< Updated upstream
   <div id="pcControlModal" class="pc-control-modal hidden" role="dialog" aria-modal="true" aria-labelledby="pcControlTitle">
     <div id="pcControlContent" class="pc-control-modal__content" data-state="off">
       <header class="pc-control-modal__header">
@@ -98,6 +99,23 @@
             <button id="pcControlOff" class="pc-control-button" data-value="OFF">OFF</button>
           </div>
         </section>
+=======
+  <div id="pcControlModal" class="pc-modal hidden" role="dialog" aria-modal="true" aria-labelledby="pcControlTitle">
+    <div class="pc-modal__dialog">
+      <header class="pc-modal__header">
+        <h2 id="pcControlTitle">PC Control</h2>
+        <button type="button" id="pcModalClose" class="pc-modal__close" aria-label="Dong bang trang thai">
+          &times;
+        </button>
+      </header>
+      <div class="pc-modal__body">
+        <div id="pcStateMessage" class="pc-modal__status">PC dang bat hoac PC dang tat</div>
+        <div class="pc-modal__buttons">
+          <button type="button" id="pcLoadButton" class="secondary">Load</button>
+          <button type="button" id="pcOnButton" class="primary" disabled>ON</button>
+          <button type="button" id="pcOffButton" class="secondary pc-button-off" disabled>OFF</button>
+        </div>
+>>>>>>> Stashed changes
       </div>
     </div>
   </div>
@@ -106,6 +124,531 @@
   <script src="js/index.js"></script>
   <script type="module" src="js/index.supabase.js"></script>
   <script type="module" src="js/quiz.js"></script>
+  <script>
+    (function initPcControlModal() {
+      const DEFAULT_STATE = {
+        control: 'IDLE',
+        status: 'IDLE',
+        reason: '',
+        message: '',
+        error: '',
+      };
+
+      const priorState = typeof window.pc_state === 'object' && window.pc_state !== null ? window.pc_state : {};
+      const stateTarget = Object.assign({}, DEFAULT_STATE, priorState);
+      const subscribers = new Set();
+
+      const notifySubscribers = () => {
+        subscribers.forEach((handler) => {
+          try {
+            handler(pcStateProxy);
+          } catch (error) {
+            console.error('pc_state subscriber error:', error);
+          }
+        });
+      };
+
+      const pcStateProxy = new Proxy(stateTarget, {
+        set(target, property, value) {
+          const currentValue = Reflect.get(target, property);
+          if (currentValue === value) {
+            return true;
+          }
+          const updated = Reflect.set(target, property, value);
+          if (updated) {
+            notifySubscribers();
+          }
+          return updated;
+        },
+        get(target, property, receiver) {
+          return Reflect.get(target, property, receiver);
+        },
+      });
+
+      window.pc_state = pcStateProxy;
+      window.observePcState = function observePcState(handler) {
+        if (typeof handler !== 'function') {
+          return () => {};
+        }
+        subscribers.add(handler);
+        try {
+          handler(pcStateProxy);
+        } catch (error) {
+          console.error('pc_state subscriber error:', error);
+        }
+        return () => {
+          subscribers.delete(handler);
+        };
+      };
+
+      const TARGET_USER = 'phamthanhnhut';
+      const CONTROL_READY_STATES = new Set(['ON', 'OFF']);
+      const STATE_MONITOR_TIMEOUT_MS = 30000;
+      const DEFAULT_MESSAGE = 'PC dang bat hoac PC dang tat';
+      const NO_SELECTION_MESSAGE = 'Chon user de dieu khien PC.';
+      const WRONG_SELECTION_MESSAGE = 'Chi ho tro user phamthanhnhut.';
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const headerTrigger = document.getElementById('autoLoginHeader');
+        const modal = document.getElementById('pcControlModal');
+        const closeButton = document.getElementById('pcModalClose');
+        const loadButton = document.getElementById('pcLoadButton');
+        const onButton = document.getElementById('pcOnButton');
+        const offButton = document.getElementById('pcOffButton');
+        const messageEl = document.getElementById('pcStateMessage');
+        const sheetSelector = document.getElementById('sheetSelector');
+        const supabase = (typeof window !== 'undefined' && window.supabaseClient) || null;
+
+        if (!headerTrigger || !modal || !closeButton || !loadButton || !onButton || !offButton || !messageEl) {
+          return;
+        }
+
+        headerTrigger.setAttribute('aria-controls', 'pcControlModal');
+        headerTrigger.setAttribute('aria-expanded', 'false');
+
+        const getNormalized = (value) => (typeof value === 'string' ? value.trim().toUpperCase() : '');
+        const resolveSheetSelection = () => {
+          if (!sheetSelector) {
+            return '';
+          }
+          const raw = sheetSelector.value || '';
+          if (!raw || /^loading/i.test(raw)) {
+            return '';
+          }
+          return raw.trim();
+        };
+        const resolveActiveBotName = () => {
+          const viaGlobal =
+            typeof window !== 'undefined' && typeof window.currentBot === 'string'
+              ? window.currentBot.trim()
+              : '';
+          const viaSelector = resolveSheetSelection();
+          return viaGlobal || viaSelector || '';
+        };
+        const matchesTargetUser = (name) => {
+          return typeof name === 'string' && name.trim().toLowerCase() === TARGET_USER;
+        };
+        const computeFailureReason = (state) => {
+          const fields = ['reason', 'message', 'error', 'details'];
+          for (const field of fields) {
+            const raw = state && typeof state[field] === 'string' ? state[field].trim() : '';
+            if (raw) {
+              return raw;
+            }
+          }
+          return 'Khong ro ly do.';
+        };
+        const computeMessage = (state) => {
+          const control = getNormalized(state.control);
+          const status = getNormalized(state.status);
+
+          if (status === 'RUNNING') {
+            if (control === 'ON') {
+              return 'Dang bat may tinh...';
+            }
+            if (control === 'OFF') {
+              return 'Dang tat may tinh...';
+            }
+            return 'He thong dang xu ly...';
+          }
+
+          const isSuccessStatus = status === 'DONE';
+          if (isSuccessStatus) {
+            if (control === 'ON') {
+              return 'Bat may tinh thanh cong.';
+            }
+            if (control === 'OFF') {
+              return 'Tat may tinh thanh cong.';
+            }
+            if (control === 'LOAD') {
+              return 'Da tai xong trang thai.';
+            }
+            return 'He thong san sang.';
+          }
+
+          if (status === 'ERROR') {
+            const failure = computeFailureReason(state);
+            if (control === 'ON') {
+              return `Bat may tinh that bai: ${failure}`;
+            }
+            if (control === 'OFF') {
+              return `Tat may tinh that bai: ${failure}`;
+            }
+            return failure;
+          }
+
+          if (control === 'LOAD') {
+            return 'Dang tai trang thai may tinh...';
+          }
+          if (control === 'ON') {
+            return 'PC dang bat.';
+          }
+          if (control === 'OFF') {
+            return 'PC dang tat.';
+          }
+
+          return DEFAULT_MESSAGE;
+        };
+
+        let lastFocusedElement = null;
+        let isSubmitting = false;
+        let activeBotName = null;
+        let pcChannel = null;
+        let botMonitorHandle = null;
+        let transitionMonitor = null;
+
+        function applyState(updates = {}) {
+          Object.entries(updates).forEach(([key, value]) => {
+            if (typeof value !== 'undefined') {
+              pcStateProxy[key] = value;
+            }
+          });
+          evaluateTransitionMonitor(pcStateProxy);
+        }
+
+        const clearTransitionMonitor = ({ resetSubmitting = true } = {}) => {
+          if (transitionMonitor && transitionMonitor.timer) {
+            window.clearTimeout(transitionMonitor.timer);
+          }
+          transitionMonitor = null;
+          if (resetSubmitting) {
+            setSubmitting(false);
+          }
+        };
+
+        const handleTransitionTimeout = () => {
+          if (!transitionMonitor) {
+            return;
+          }
+          clearTransitionMonitor({ resetSubmitting: true });
+          applyState({
+            control: null,
+            status: null,
+            error: 'Khong co phan hoi sau 30 giay. Vui long thu lai.',
+          });
+        };
+
+        const startTransitionMonitor = ({ expectedControl = null, expectedStatus = null } = {}) => {
+          clearTransitionMonitor({ resetSubmitting: false });
+          if (!expectedControl && !expectedStatus) {
+            return;
+          }
+          transitionMonitor = {
+            expectedControl: expectedControl ? expectedControl.toUpperCase() : null,
+            expectedStatus: expectedStatus ? expectedStatus.toUpperCase() : null,
+            timer: window.setTimeout(handleTransitionTimeout, STATE_MONITOR_TIMEOUT_MS),
+          };
+        };
+
+        function evaluateTransitionMonitor(state) {
+          if (!transitionMonitor) {
+            return;
+          }
+          const control = getNormalized(state.control);
+          const status = getNormalized(state.status);
+          const { expectedControl, expectedStatus } = transitionMonitor;
+
+          const statusChanged = expectedStatus ? status !== expectedStatus : false;
+          const controlChanged = expectedControl ? control !== expectedControl : false;
+
+          if (statusChanged || controlChanged) {
+            clearTransitionMonitor({ resetSubmitting: true });
+          }
+        }
+
+        const setSubmitting = (value) => {
+          isSubmitting = Boolean(value);
+          updateUi(pcStateProxy);
+        };
+
+        const cleanupRealtimeChannel = () => {
+          if (pcChannel && supabase) {
+            try {
+              supabase.removeChannel(pcChannel);
+            } catch (error) {
+              console.warn('pc_state: removeChannel failed', error);
+            }
+          }
+          pcChannel = null;
+          clearTransitionMonitor();
+        };
+
+        const applyRemoteRecord = (record) => {
+          if (!record) {
+            applyState({ control: 'IDLE', status: 'IDLE' });
+            return;
+          }
+          const updates = {
+            control: record.control ? record.control.trim().toUpperCase() : 'IDLE',
+            status: record.status ? record.status.trim().toUpperCase() : 'IDLE',
+          };
+          applyState(updates);
+        };
+
+        const fetchPcState = async (name) => {
+          if (!supabase || !name) {
+            return;
+          }
+          try {
+            const { data, error } = await supabase
+              .from('pc_state')
+              .select('name, control, status')
+              .eq('name', name)
+              .maybeSingle();
+
+            if (error) {
+              console.error('pc_state: fetch error', error);
+              return;
+            }
+
+            if (data) {
+              applyRemoteRecord(data);
+            } else {
+              applyState({ control: 'IDLE', status: 'IDLE' });
+            }
+          } catch (fetchError) {
+            console.error('pc_state: fetch exception', fetchError);
+          }
+        };
+
+        const subscribeToPcState = (name) => {
+          if (!supabase || !name) {
+            return;
+          }
+
+          cleanupRealtimeChannel();
+
+          pcChannel = supabase
+            .channel(`realtime-pc-state-${name}`)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'pc_state',
+                filter: `name=eq.${name}`,
+              },
+              (payload) => {
+                if (payload?.new) {
+                  applyRemoteRecord(payload.new);
+                } else if (payload?.eventType === 'DELETE') {
+                  applyState({ control: 'IDLE', status: 'IDLE' });
+                }
+              },
+            )
+            .subscribe((status) => {
+              if (status === 'SUBSCRIBED') {
+                fetchPcState(name);
+              }
+              if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                console.warn('pc_state realtime status:', status);
+              }
+            });
+        };
+
+        const updateUi = (state) => {
+          const control = getNormalized(state.control);
+          const status = getNormalized(state.status);
+          const readyForActions = CONTROL_READY_STATES.has(control);
+          const isBusy = status === 'RUNNING';
+          const currentSelection = resolveActiveBotName();
+          const hasSelection = Boolean(currentSelection);
+          const allowedUser = matchesTargetUser(currentSelection);
+
+          loadButton.disabled = isSubmitting || isBusy || !hasSelection || !allowedUser;
+          onButton.disabled = isSubmitting || isBusy || !readyForActions || !hasSelection || !allowedUser;
+          offButton.disabled = isSubmitting || isBusy || !readyForActions || !hasSelection || !allowedUser;
+
+          if (!hasSelection) {
+            messageEl.textContent = NO_SELECTION_MESSAGE;
+          } else if (!allowedUser) {
+            messageEl.textContent = WRONG_SELECTION_MESSAGE;
+          } else {
+            messageEl.textContent = computeMessage(state);
+          }
+        };
+
+        const focusDefaultButton = () => {
+          const candidates = [loadButton, onButton, offButton, closeButton];
+          const target = candidates.find((element) => element && !element.disabled);
+          if (target) {
+            target.focus();
+          }
+        };
+
+        const closeModal = () => {
+          if (modal.classList.contains('hidden')) {
+            return;
+          }
+          modal.classList.add('hidden');
+          modal.setAttribute('aria-hidden', 'true');
+          headerTrigger.setAttribute('aria-expanded', 'false');
+          if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+            lastFocusedElement.focus();
+          }
+        };
+
+        const openModal = () => {
+          if (!modal.classList.contains('hidden')) {
+            return;
+          }
+          const currentSelection = resolveActiveBotName();
+          if (!matchesTargetUser(currentSelection)) {
+            return;
+          }
+          lastFocusedElement = document.activeElement;
+          modal.classList.remove('hidden');
+          modal.setAttribute('aria-hidden', 'false');
+          headerTrigger.setAttribute('aria-expanded', 'true');
+          updateUi(pcStateProxy);
+          window.requestAnimationFrame(focusDefaultButton);
+        };
+
+        const syncActiveBotName = (options = {}) => {
+          const currentName = resolveActiveBotName();
+          if (!options.force && currentName === activeBotName) {
+            updateUi(pcStateProxy);
+            return;
+          }
+
+          activeBotName = currentName || null;
+
+          if (supabase && matchesTargetUser(activeBotName)) {
+            if (activeBotName) {
+              subscribeToPcState(activeBotName);
+            } else {
+              cleanupRealtimeChannel();
+              applyState({ control: 'IDLE', status: 'IDLE' });
+            }
+          } else {
+            cleanupRealtimeChannel();
+            applyState({ control: 'IDLE', status: 'IDLE' });
+          }
+
+          updateUi(pcStateProxy);
+        };
+
+        const performPcControlUpdate = async (nextControl) => {
+          const targetControl = getNormalized(nextControl) || 'LOAD';
+          const name = resolveActiveBotName();
+
+          if (!matchesTargetUser(name)) {
+            updateUi(pcStateProxy);
+            return;
+          }
+
+          const nextStatus =
+            targetControl === 'ON' || targetControl === 'OFF' ? 'RUNNING' : null;
+
+          applyState({
+            control: targetControl,
+            status: nextStatus ?? pcStateProxy.status,
+            reason: '',
+            message: '',
+            error: '',
+          });
+          startTransitionMonitor({
+            expectedControl: targetControl,
+            expectedStatus: nextStatus,
+          });
+
+          if (!supabase) {
+            return;
+          }
+
+          setSubmitting(true);
+          try {
+            const payload = {
+              name,
+              control: targetControl,
+              status: nextStatus,
+            };
+
+            const { data, error } = await supabase
+              .from('pc_state')
+              .upsert(payload, { onConflict: 'name' })
+              .select('name, control, status')
+              .maybeSingle();
+
+            if (error) {
+              throw error;
+            }
+
+            if (data) {
+              applyRemoteRecord(data);
+            }
+          } catch (updateError) {
+            console.error('pc_state: update failed', updateError);
+            applyState({
+              status: 'ERROR',
+              error:
+                (updateError && updateError.message) ||
+                'Khong the cap nhat pc_state.',
+            });
+          } finally {
+            setSubmitting(false);
+          }
+        };
+
+        window.observePcState(updateUi);
+
+        headerTrigger.addEventListener('click', openModal);
+        headerTrigger.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openModal();
+          }
+        });
+
+        closeButton.addEventListener('click', closeModal);
+        modal.addEventListener('click', (event) => {
+          if (event.target === modal) {
+            closeModal();
+          }
+        });
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeModal();
+          }
+        });
+
+        loadButton.addEventListener('click', () => {
+          if (!loadButton.disabled) {
+            void performPcControlUpdate('LOAD');
+          }
+        });
+
+        onButton.addEventListener('click', () => {
+          if (!onButton.disabled) {
+            void performPcControlUpdate('ON');
+          }
+        });
+
+        offButton.addEventListener('click', () => {
+          if (!offButton.disabled) {
+            void performPcControlUpdate('OFF');
+          }
+        });
+
+        if (sheetSelector) {
+          sheetSelector.addEventListener('change', () => syncActiveBotName({ force: true }));
+        }
+        window.addEventListener('supabase-captcha-update', () => syncActiveBotName());
+
+        syncActiveBotName({ force: true });
+        botMonitorHandle = window.setInterval(syncActiveBotName, 1500);
+
+        window.addEventListener('beforeunload', () => {
+          cleanupRealtimeChannel();
+          if (botMonitorHandle) {
+            window.clearInterval(botMonitorHandle);
+          }
+        });
+      });
+    })();
+  </script>
+
 </body>
 
 </html>
