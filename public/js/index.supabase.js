@@ -24,6 +24,24 @@ const renderCaptchaGlobal =
   (typeof window !== "undefined" && window.renderCaptcha) || null;
 
 const DEFAULT_LOG_PLACEHOLDER = "No log entries yet.";
+const PC_LOG_TABLE_PRIMARY = "pc_log";
+const PC_LOG_TABLE_FALLBACK = "pc_logs";
+const PC_CONTROL_ALLOWED_USER = "phamthanhnhut";
+
+let pcControlChannel = null;
+let pcLogChannel = null;
+let lastPcControlBot = null;
+let lastPcLogBot = null;
+let cachedPcControlValue = null;
+let cachedPcLogs = [];
+let resolvedPcLogTable = PC_LOG_TABLE_PRIMARY;
+
+function isPcControlAllowed(botName) {
+  if (!botName) {
+    return false;
+  }
+  return botName === PC_CONTROL_ALLOWED_USER;
+}
 
 const logState = {
   latestStamp: null,
@@ -120,6 +138,105 @@ function prependLogEntry(log) {
 }
 
 resetLogDisplay();
+
+function normalizePcControlValue(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const upper = String(value).trim().toUpperCase();
+  if (upper === "ON" || upper === "OFF") {
+    return upper;
+  }
+  return "";
+}
+
+function notifyPcControlValue(value) {
+  const resolved = normalizePcControlValue(value) || "OFF";
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (typeof window.setPcControlState === "function") {
+    window.setPcControlState(resolved);
+  } else {
+    window.__pendingPcControlState = resolved;
+  }
+}
+
+function setCachedPcControlValue(nextValue) {
+  const resolved = normalizePcControlValue(nextValue) || "OFF";
+  if (cachedPcControlValue === resolved) {
+    return;
+  }
+  cachedPcControlValue = resolved;
+  notifyPcControlValue(resolved);
+}
+
+function notifyPcLogs(logs) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const payload = Array.isArray(logs) ? logs.slice(0, 5) : [];
+  if (typeof window.setPcLogs === "function") {
+    window.setPcLogs(payload);
+  } else {
+    window.__pendingPcLogs = payload;
+  }
+}
+
+function sanitizePcLogEntry(entry) {
+  if (!entry) {
+    return null;
+  }
+  const message =
+    entry && Object.prototype.hasOwnProperty.call(entry, "message")
+      ? String(entry.message ?? "").trim()
+      : "";
+  const state =
+    typeof entry.state === "string" ? entry.state.trim() : "";
+  const action =
+    typeof entry.action === "string" ? entry.action.trim() : "";
+  const level =
+    typeof entry.level === "string" ? entry.level.trim() : "";
+  const error =
+    entry && Object.prototype.hasOwnProperty.call(entry, "error")
+      ? String(entry.error ?? "").trim()
+      : "";
+  const createdAt =
+    entry.created_at ||
+    entry.createdAt ||
+    entry.inserted_at ||
+    entry.insertedAt ||
+    null;
+
+  return {
+    message,
+    created_at: createdAt,
+    state,
+    action,
+    level,
+    error,
+  };
+}
+
+function setCachedPcLogs(entries) {
+  const sanitized = Array.isArray(entries)
+    ? entries
+        .map((item) => sanitizePcLogEntry(item))
+        .filter((item) => Boolean(item))
+    : [];
+  cachedPcLogs = sanitized.slice(0, 5);
+  notifyPcLogs(cachedPcLogs);
+}
+
+function pushCachedPcLog(entry) {
+  const sanitized = sanitizePcLogEntry(entry);
+  if (!sanitized) {
+    return;
+  }
+  const next = [sanitized, ...cachedPcLogs];
+  cachedPcLogs = next.slice(0, 5);
+  notifyPcLogs(cachedPcLogs);
+}
 
 const statusListeners = new Set();
 const lastKnownStatusByBot = new Map();
@@ -254,6 +371,9 @@ sheetSelector.addEventListener("change", (e) => {
   resetLogDisplay();
   subscribeToCaptcha(botName);
   subscribeToLogs(botName);
+  const allowPcControl = isPcControlAllowed(botName);
+  subscribeToPcControl(allowPcControl ? botName : null);
+  subscribeToPcLogs(allowPcControl ? botName : null);
 });
 // ?? L?y captcha m?i nh?t khi kh?i t?o ho?c ch?n user
 async function loadLatestCaptcha(botName) {
@@ -289,6 +409,200 @@ async function loadAllLogs(botName) {
     return;
   }
   renderLogList(data);
+}
+
+async function loadPcControlValue(botName) {
+  if (!botName) {
+    setCachedPcControlValue("OFF");
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("captchas")
+    .select("pc_control")
+    .eq("name", botName)
+    .maybeSingle();
+
+  if (error) {
+    console.error("PC control fetch error:", error.message);
+    return;
+  }
+
+  const value = data ? data.pc_control : null;
+  setCachedPcControlValue(value);
+}
+
+async function updatePcControlValue(botName, value) {
+  if (!botName) {
+    throw new Error("Missing bot name.");
+  }
+
+  if (!isPcControlAllowed(botName)) {
+    throw new Error('PC Control is only available for user "phamthanhnhut".');
+  }
+
+  const normalized = normalizePcControlValue(value) || "OFF";
+  const { error } = await supabase
+    .from("captchas")
+    .update({ pc_control: normalized })
+    .eq("name", botName);
+
+  if (error) {
+    throw new Error(error.message || "Failed to update PC control.");
+  }
+
+  setCachedPcControlValue(normalized);
+  return { success: true, value: normalized };
+}
+
+async function fetchPcLogs(botName, tableName) {
+  return supabase
+    .from(tableName)
+    .select("message, created_at, state, action, level, error")
+    .eq("name", botName)
+    .order("created_at", { ascending: false })
+    .limit(5);
+}
+
+async function loadPcLogs(botName) {
+  if (!botName) {
+    setCachedPcLogs([]);
+    return;
+  }
+
+  let tableName = resolvedPcLogTable || PC_LOG_TABLE_PRIMARY;
+  let { data, error } = await fetchPcLogs(botName, tableName);
+
+  if (error && error.code === "42P01" && tableName !== PC_LOG_TABLE_FALLBACK) {
+    tableName = PC_LOG_TABLE_FALLBACK;
+    ({ data, error } = await fetchPcLogs(botName, tableName));
+  }
+
+  if (error) {
+    console.error("PC log fetch error:", error.message);
+    return;
+  }
+
+  resolvedPcLogTable = tableName;
+  setCachedPcLogs(data || []);
+}
+
+function requestPcLogsRefresh(botName) {
+  const target = botName || currentBot || "";
+  if (!target || !isPcControlAllowed(target)) {
+    setCachedPcLogs([]);
+    return Promise.resolve();
+  }
+  return loadPcLogs(target);
+}
+
+function subscribeToPcControl(botName) {
+  if (pcControlChannel) {
+    supabase.removeChannel(pcControlChannel);
+    pcControlChannel = null;
+  }
+  lastPcControlBot = null;
+
+  if (!botName) {
+    setCachedPcControlValue("OFF");
+    return;
+  }
+
+  if (!isPcControlAllowed(botName)) {
+    setCachedPcControlValue("OFF");
+    return;
+  }
+
+  lastPcControlBot = botName;
+
+  (async () => {
+    await loadPcControlValue(botName);
+    if (lastPcControlBot !== botName) {
+      return;
+    }
+
+    pcControlChannel = supabase
+      .channel(`realtime-pc-control-${botName}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "captchas",
+          filter: `name=eq.${botName}`,
+        },
+        (payload) => {
+          const updated = payload?.new || null;
+          if (updated && Object.prototype.hasOwnProperty.call(updated, "pc_control")) {
+            setCachedPcControlValue(updated.pc_control);
+          }
+        }
+      )
+      .subscribe(async (status) => {
+        console.log(`?? PC control channel ${botName}:`, status);
+        if (status === "SUBSCRIBED") {
+          await loadPcControlValue(botName);
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          console.warn(`PC control channel issue for ${botName}:`, status);
+        }
+      });
+  })().catch((error) => {
+    console.error("PC control subscribe error:", error);
+  });
+}
+
+function subscribeToPcLogs(botName) {
+  if (pcLogChannel) {
+    supabase.removeChannel(pcLogChannel);
+    pcLogChannel = null;
+  }
+  lastPcLogBot = null;
+
+  if (!botName) {
+    setCachedPcLogs([]);
+    return;
+  }
+
+  if (!isPcControlAllowed(botName)) {
+    setCachedPcLogs([]);
+    return;
+  }
+
+  lastPcLogBot = botName;
+
+  (async () => {
+    await loadPcLogs(botName);
+    if (lastPcLogBot !== botName) {
+      return;
+    }
+
+    const tableName = resolvedPcLogTable || PC_LOG_TABLE_PRIMARY;
+
+    pcLogChannel = supabase
+      .channel(`realtime-pc-log-${botName}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: tableName,
+          filter: `name=eq.${botName}`,
+        },
+        (payload) => {
+          if (payload?.new) {
+            pushCachedPcLog(payload.new);
+          }
+        }
+      )
+      .subscribe(async (status) => {
+        console.log(`?? PC log channel ${botName}:`, status);
+        if (status === "SUBSCRIBED") {
+          await loadPcLogs(botName);
+        }
+      });
+  })().catch((error) => {
+    console.error("PC log subscribe error:", error);
+  });
 }
 
 function subscribeToCaptcha(botName) {
@@ -382,6 +696,10 @@ window.addEventListener("supabase-captcha-update", (event) => {
 if (typeof window !== "undefined") {
   window.subscribeToCaptcha = subscribeToCaptcha;
   window.subscribeToLogs = subscribeToLogs;
+  window.subscribeToPcControl = subscribeToPcControl;
+  window.subscribeToPcLogs = subscribeToPcLogs;
+  window.updatePcControlValue = updatePcControlValue;
+  window.requestPcLogsRefresh = requestPcLogsRefresh;
   window.addCaptchaStatusListener = addCaptchaStatusListener;
   if (typeof window.onCaptchaStatusSupportReady === "function") {
     try {
