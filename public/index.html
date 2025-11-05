@@ -79,27 +79,6 @@
     </section>
   </main>
 
-<<<<<<< Updated upstream
-  <div id="pcControlModal" class="pc-control-modal hidden" role="dialog" aria-modal="true" aria-labelledby="pcControlTitle">
-    <div id="pcControlContent" class="pc-control-modal__content" data-state="off">
-      <header class="pc-control-modal__header">
-        <h2 id="pcControlTitle">PC Control</h2>
-        <button id="pcControlClose" class="pc-control-modal__close" aria-label="Close PC Control popup">&times;</button>
-      </header>
-      <div class="pc-control-modal__body">
-        <section class="pc-control-modal__section">
-          <h3>Logs</h3>
-          <div id="pcLogList" class="pc-control-log-list" role="log" aria-live="polite">
-            <p class="pc-control-log-placeholder">No PC logs yet.</p>
-          </div>
-        </section>
-        <section class="pc-control-modal__section">
-          <div class="pc-control-buttons">
-            <button id="pcControlOn" class="pc-control-button" data-value="ON">ON</button>
-            <button id="pcControlOff" class="pc-control-button" data-value="OFF">OFF</button>
-          </div>
-        </section>
-=======
   <div id="pcControlModal" class="pc-modal hidden" role="dialog" aria-modal="true" aria-labelledby="pcControlTitle">
     <div class="pc-modal__dialog">
       <header class="pc-modal__header">
@@ -115,7 +94,6 @@
           <button type="button" id="pcOnButton" class="primary" disabled>ON</button>
           <button type="button" id="pcOffButton" class="secondary pc-button-off" disabled>OFF</button>
         </div>
->>>>>>> Stashed changes
       </div>
     </div>
   </div>
@@ -217,14 +195,7 @@
           }
           return raw.trim();
         };
-        const resolveActiveBotName = () => {
-          const viaGlobal =
-            typeof window !== 'undefined' && typeof window.currentBot === 'string'
-              ? window.currentBot.trim()
-              : '';
-          const viaSelector = resolveSheetSelection();
-          return viaGlobal || viaSelector || '';
-        };
+        const resolveActiveBotName = () => resolveSheetSelection();
         const matchesTargetUser = (name) => {
           return typeof name === 'string' && name.trim().toLowerCase() === TARGET_USER;
         };
