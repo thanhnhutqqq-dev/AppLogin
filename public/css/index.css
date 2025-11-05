@@ -688,8 +688,7 @@ textarea {
 }
 
 .pc-control-modal__content[data-loading='true'] .pc-control-button {
-  opacity: 0.6;
-  pointer-events: none;
+  opacity: 0.75;
 }
 
 @media (max-width: 640px) {
