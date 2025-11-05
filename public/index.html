@@ -88,7 +88,7 @@
         </button>
       </header>
       <div class="pc-modal__body">
-        <div id="pcStateMessage" class="pc-modal__status">PC dang bat hoac PC dang tat</div>
+        <div id="pcStateMessage" class="pc-modal__status">ℹ️ Tình trạng máy chưa xác định.</div>
         <div class="pc-modal__buttons">
           <button type="button" id="pcLoadButton" class="secondary">Load</button>
           <button type="button" id="pcOnButton" class="primary" disabled>ON</button>
@@ -103,10 +103,11 @@
   <script type="module" src="js/index.supabase.js"></script>
   <script type="module" src="js/quiz.js"></script>
   <script>
-    (function initPcControlModal() {
+      (function initPcControlModal() {
+      const CONTROL_NONE = 'NONE';
       const DEFAULT_STATE = {
-        control: 'IDLE',
-        status: 'IDLE',
+        control: CONTROL_NONE,
+        status: null,
         reason: '',
         message: '',
         error: '',
@@ -114,6 +115,12 @@
 
       const priorState = typeof window.pc_state === 'object' && window.pc_state !== null ? window.pc_state : {};
       const stateTarget = Object.assign({}, DEFAULT_STATE, priorState);
+      if (typeof stateTarget.control === 'string') {
+        const normalizedControl = stateTarget.control.trim().toUpperCase();
+        stateTarget.control = normalizedControl || CONTROL_NONE;
+      } else {
+        stateTarget.control = CONTROL_NONE;
+      }
       const subscribers = new Set();
 
       const notifySubscribers = () => {
@@ -162,9 +169,9 @@
       const TARGET_USER = 'phamthanhnhut';
       const CONTROL_READY_STATES = new Set(['ON', 'OFF']);
       const STATE_MONITOR_TIMEOUT_MS = 30000;
-      const DEFAULT_MESSAGE = 'PC dang bat hoac PC dang tat';
-      const NO_SELECTION_MESSAGE = 'Chon user de dieu khien PC.';
-      const WRONG_SELECTION_MESSAGE = 'Chi ho tro user phamthanhnhut.';
+      const DEFAULT_MESSAGE = 'ℹ️ Tình trạng máy chưa xác định.';
+      const NO_SELECTION_MESSAGE = '🔍 Chọn user để điều khiển PC.';
+      const WRONG_SELECTION_MESSAGE = '🚫 Chỉ hỗ trợ user "phamthanhnhut".';
 
       document.addEventListener('DOMContentLoaded', () => {
         const headerTrigger = document.getElementById('autoLoginHeader');
@@ -207,55 +214,59 @@
               return raw;
             }
           }
-          return 'Khong ro ly do.';
+          return 'Không rõ lý do.';
         };
         const computeMessage = (state) => {
           const control = getNormalized(state.control);
           const status = getNormalized(state.status);
 
-          if (status === 'RUNNING') {
-            if (control === 'ON') {
-              return 'Dang bat may tinh...';
-            }
-            if (control === 'OFF') {
-              return 'Dang tat may tinh...';
-            }
-            return 'He thong dang xu ly...';
+          if (!control || control === CONTROL_NONE) {
+            return DEFAULT_MESSAGE;
           }
 
-          const isSuccessStatus = status === 'DONE';
-          if (isSuccessStatus) {
+          if (status === 'RUNNING') {
             if (control === 'ON') {
-              return 'Bat may tinh thanh cong.';
+              return '⚙️ Đang bật máy tính...';
             }
             if (control === 'OFF') {
-              return 'Tat may tinh thanh cong.';
+              return '⚙️ Đang tắt máy tính...';
+            }
+            return '⚙️ Hệ thống đang xử lý...';
+          }
+
+          const isSuccessStatus = status === 'DONE' || status === 'STOPPED';
+          if (isSuccessStatus) {
+            if (control === 'ON') {
+              return '✅ Bật máy tính thành công.';
+            }
+            if (control === 'OFF') {
+              return '✅ Tắt máy tính thành công.';
             }
             if (control === 'LOAD') {
-              return 'Da tai xong trang thai.';
+              return '✅ Đã tải xong trạng thái.';
             }
-            return 'He thong san sang.';
+            return '✅ Hệ thống sẵn sàng.';
           }
 
           if (status === 'ERROR') {
             const failure = computeFailureReason(state);
             if (control === 'ON') {
-              return `Bat may tinh that bai: ${failure}`;
+              return `❌ Bật máy tính thất bại: ${failure}`;
             }
             if (control === 'OFF') {
-              return `Tat may tinh that bai: ${failure}`;
+              return `❌ Tắt máy tính thất bại: ${failure}`;
             }
-            return failure;
+            return failure || DEFAULT_MESSAGE;
           }
 
           if (control === 'LOAD') {
-            return 'Dang tai trang thai may tinh...';
+            return '🔄 Đang tải trạng thái máy tính...';
           }
           if (control === 'ON') {
-            return 'PC dang bat.';
+            return '💡 PC đang bật.';
           }
           if (control === 'OFF') {
-            return 'PC dang tat.';
+            return '💤 PC đang tắt.';
           }
 
           return DEFAULT_MESSAGE;
@@ -270,8 +281,17 @@
 
         function applyState(updates = {}) {
           Object.entries(updates).forEach(([key, value]) => {
-            if (typeof value !== 'undefined') {
-              pcStateProxy[key] = value;
+            let nextValue = value;
+            if (key === 'control') {
+              if (typeof nextValue === 'string') {
+                const trimmed = nextValue.trim().toUpperCase();
+                nextValue = trimmed || CONTROL_NONE;
+              } else {
+                nextValue = CONTROL_NONE;
+              }
+            }
+            if (typeof nextValue !== 'undefined') {
+              pcStateProxy[key] = nextValue;
             }
           });
           evaluateTransitionMonitor(pcStateProxy);
@@ -292,11 +312,31 @@
             return;
           }
           clearTransitionMonitor({ resetSubmitting: true });
+          const timeoutMessage = '⏱️ Hết thời gian (30 giây). Vui lòng thử lại.';
           applyState({
-            control: null,
+            control: CONTROL_NONE,
             status: null,
-            error: 'Khong co phan hoi sau 30 giay. Vui long thu lai.',
+            error: timeoutMessage,
           });
+          if (typeof window.setFeedback === 'function') {
+            try {
+              window.setFeedback('error', timeoutMessage);
+            } catch (setFeedbackError) {
+              console.warn('pc_state timeout feedback failed:', setFeedbackError);
+            }
+          }
+          if (supabase && activeBotName && matchesTargetUser(activeBotName)) {
+            (async () => {
+              try {
+                await supabase
+                  .from('pc_state')
+                  .update({ control: CONTROL_NONE, status: null })
+                  .eq('name', activeBotName);
+              } catch (error) {
+                console.warn('pc_state timeout update failed:', error);
+              }
+            })();
+          }
         };
 
         const startTransitionMonitor = ({ expectedControl = null, expectedStatus = null } = {}) => {
@@ -346,12 +386,12 @@
 
         const applyRemoteRecord = (record) => {
           if (!record) {
-            applyState({ control: 'IDLE', status: 'IDLE' });
+            applyState({ control: CONTROL_NONE, status: null });
             return;
           }
           const updates = {
-            control: record.control ? record.control.trim().toUpperCase() : 'IDLE',
-            status: record.status ? record.status.trim().toUpperCase() : 'IDLE',
+            control: record.control ? record.control.trim().toUpperCase() : CONTROL_NONE,
+            status: record.status ? record.status.trim().toUpperCase() : null,
           };
           applyState(updates);
         };
@@ -375,7 +415,7 @@
             if (data) {
               applyRemoteRecord(data);
             } else {
-              applyState({ control: 'IDLE', status: 'IDLE' });
+              applyState({ control: CONTROL_NONE, status: null });
             }
           } catch (fetchError) {
             console.error('pc_state: fetch exception', fetchError);
@@ -403,7 +443,7 @@
                 if (payload?.new) {
                   applyRemoteRecord(payload.new);
                 } else if (payload?.eventType === 'DELETE') {
-                  applyState({ control: 'IDLE', status: 'IDLE' });
+                  applyState({ control: CONTROL_NONE, status: null });
                 }
               },
             )
@@ -489,11 +529,11 @@
               subscribeToPcState(activeBotName);
             } else {
               cleanupRealtimeChannel();
-              applyState({ control: 'IDLE', status: 'IDLE' });
+            applyState({ control: CONTROL_NONE, status: null });
             }
           } else {
             cleanupRealtimeChannel();
-            applyState({ control: 'IDLE', status: 'IDLE' });
+            applyState({ control: CONTROL_NONE, status: null });
           }
 
           updateUi(pcStateProxy);
