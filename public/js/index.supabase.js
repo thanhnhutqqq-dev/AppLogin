@@ -27,6 +27,7 @@ const DEFAULT_LOG_PLACEHOLDER = "No log entries yet.";
 const PC_LOG_TABLE_PRIMARY = "pc_log";
 const PC_LOG_TABLE_FALLBACK = "pc_logs";
 const PC_CONTROL_ALLOWED_USER = "phamthanhnhut";
+const PC_LOG_POLL_INTERVAL_MS = 2000;
 
 let pcControlChannel = null;
 let pcLogChannel = null;
@@ -35,12 +36,55 @@ let lastPcLogBot = null;
 let cachedPcControlValue = null;
 let cachedPcLogs = [];
 let resolvedPcLogTable = PC_LOG_TABLE_PRIMARY;
+let pendingPcControlValue = null;
+let pendingPcControlTimer = null;
+let pcLogPollingTimer = null;
 
 function isPcControlAllowed(botName) {
   if (!botName) {
     return false;
   }
   return botName === PC_CONTROL_ALLOWED_USER;
+}
+
+function clearPendingPcControl() {
+  if (pendingPcControlTimer) {
+    clearTimeout(pendingPcControlTimer);
+    pendingPcControlTimer = null;
+  }
+  pendingPcControlValue = null;
+}
+
+function setPendingPcControl(value) {
+  clearPendingPcControl();
+  if (!value) {
+    return;
+  }
+  pendingPcControlValue = value;
+  pendingPcControlTimer = setTimeout(() => {
+    pendingPcControlValue = null;
+    pendingPcControlTimer = null;
+  }, 5000);
+}
+
+function startPcLogPolling(botName) {
+  if (!botName || !isPcControlAllowed(botName)) {
+    stopPcLogPolling();
+    return;
+  }
+  stopPcLogPolling();
+  pcLogPollingTimer = setInterval(() => {
+    loadPcLogs(botName).catch((error) =>
+      console.error("PC log polling failed:", error)
+    );
+  }, PC_LOG_POLL_INTERVAL_MS);
+}
+
+function stopPcLogPolling() {
+  if (pcLogPollingTimer) {
+    clearInterval(pcLogPollingTimer);
+    pcLogPollingTimer = null;
+  }
 }
 
 const logState = {
@@ -162,13 +206,22 @@ function notifyPcControlValue(value) {
   }
 }
 
-function setCachedPcControlValue(nextValue) {
+function setCachedPcControlValue(nextValue, { force = false } = {}) {
   const resolved = normalizePcControlValue(nextValue) || "OFF";
-  if (cachedPcControlValue === resolved) {
+  if (!force && pendingPcControlValue && pendingPcControlValue !== resolved) {
+    return;
+  }
+  if (cachedPcControlValue === resolved && !force) {
+    if (pendingPcControlValue === resolved) {
+      clearPendingPcControl();
+    }
     return;
   }
   cachedPcControlValue = resolved;
   notifyPcControlValue(resolved);
+  if (pendingPcControlValue === resolved || force) {
+    clearPendingPcControl();
+  }
 }
 
 function notifyPcLogs(logs) {
@@ -413,7 +466,8 @@ async function loadAllLogs(botName) {
 
 async function loadPcControlValue(botName) {
   if (!botName) {
-    setCachedPcControlValue("OFF");
+    setCachedPcControlValue("OFF", { force: true });
+    clearPendingPcControl();
     return;
   }
 
@@ -442,16 +496,18 @@ async function updatePcControlValue(botName, value) {
   }
 
   const normalized = normalizePcControlValue(value) || "OFF";
+  setPendingPcControl(normalized);
   const { error } = await supabase
     .from("captchas")
     .update({ pc_control: normalized })
     .eq("name", botName);
 
   if (error) {
+    clearPendingPcControl();
     throw new Error(error.message || "Failed to update PC control.");
   }
 
-  setCachedPcControlValue(normalized);
+  setCachedPcControlValue(normalized, { force: true });
   return { success: true, value: normalized };
 }
 
@@ -491,8 +547,10 @@ function requestPcLogsRefresh(botName) {
   const target = botName || currentBot || "";
   if (!target || !isPcControlAllowed(target)) {
     setCachedPcLogs([]);
+    stopPcLogPolling();
     return Promise.resolve();
   }
+  startPcLogPolling(target);
   return loadPcLogs(target);
 }
 
@@ -504,12 +562,14 @@ function subscribeToPcControl(botName) {
   lastPcControlBot = null;
 
   if (!botName) {
-    setCachedPcControlValue("OFF");
+    setCachedPcControlValue("OFF", { force: true });
+    clearPendingPcControl();
     return;
   }
 
   if (!isPcControlAllowed(botName)) {
-    setCachedPcControlValue("OFF");
+    setCachedPcControlValue("OFF", { force: true });
+    clearPendingPcControl();
     return;
   }
 
@@ -560,11 +620,13 @@ function subscribeToPcLogs(botName) {
 
   if (!botName) {
     setCachedPcLogs([]);
+    stopPcLogPolling();
     return;
   }
 
   if (!isPcControlAllowed(botName)) {
     setCachedPcLogs([]);
+    stopPcLogPolling();
     return;
   }
 
@@ -575,6 +637,7 @@ function subscribeToPcLogs(botName) {
     if (lastPcLogBot !== botName) {
       return;
     }
+    startPcLogPolling(botName);
 
     const tableName = resolvedPcLogTable || PC_LOG_TABLE_PRIMARY;
 
