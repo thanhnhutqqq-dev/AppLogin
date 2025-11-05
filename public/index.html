@@ -79,6 +79,29 @@
     </section>
   </main>
 
+  <div id="pcControlModal" class="pc-control-modal hidden" role="dialog" aria-modal="true" aria-labelledby="pcControlTitle">
+    <div id="pcControlContent" class="pc-control-modal__content" data-state="off">
+      <header class="pc-control-modal__header">
+        <h2 id="pcControlTitle">PC Control</h2>
+        <button id="pcControlClose" class="pc-control-modal__close" aria-label="Close PC Control popup">&times;</button>
+      </header>
+      <div class="pc-control-modal__body">
+        <section class="pc-control-modal__section">
+          <h3>Logs</h3>
+          <div id="pcLogList" class="pc-control-log-list" role="log" aria-live="polite">
+            <p class="pc-control-log-placeholder">No PC logs yet.</p>
+          </div>
+        </section>
+        <section class="pc-control-modal__section">
+          <div class="pc-control-buttons">
+            <button id="pcControlOn" class="pc-control-button" data-value="ON">ON</button>
+            <button id="pcControlOff" class="pc-control-button" data-value="OFF">OFF</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
   <script src="services/dashboardApi.js"></script>
   <script src="js/index.js"></script>
   <script type="module" src="js/index.supabase.js"></script>
@@ -86,4 +109,3 @@
 </body>
 
 </html>
-
